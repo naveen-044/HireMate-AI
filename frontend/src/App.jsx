@@ -6,6 +6,7 @@ import "./App.css";
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
   ).replace(/\/$/, "");
+const MAX_RESUME_FILE_SIZE = 10 * 1024 * 1024;
 
 async function readAuthResponse(response) {
   const body = await response.text();
@@ -57,6 +58,24 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activePage, setActivePage] = useState("Dashboard");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("hiremate-theme") === "dark"
+        ? "dark"
+        : "light";
+    } catch (error) {
+      console.error("Could not load theme preference:", error);
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("hiremate-theme", theme);
+    } catch (error) {
+      console.error("Could not save theme preference:", error);
+    }
+  }, [theme]);
 
   const [authMode, setAuthMode] = useState("login");
   const [authUser, setAuthUser] = useState(null);
@@ -107,12 +126,14 @@ function App() {
 
   const [resumeData, setResumeData] = useState(null);
   const [jobDescription, setJobDescription] = useState("");
+  const [matchedJobDescription, setMatchedJobDescription] = useState("");
   const [matchResult, setMatchResult] = useState(null);
   const [atsResult, setAtsResult] = useState(null);
 
   const [pastedResume, setPastedResume] = useState("");
   const [editedResumeText, setEditedResumeText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
+  const [resumeDragActive, setResumeDragActive] = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [savingResume, setSavingResume] = useState(false);
@@ -120,9 +141,11 @@ function App() {
   const [matching, setMatching] = useState(false);
 
   const [careerQuestion, setCareerQuestion] = useState("");
+  const [careerSubmittedQuestion, setCareerSubmittedQuestion] = useState("");
   const [careerAnswer, setCareerAnswer] = useState("");
   const [careerLoading, setCareerLoading] = useState(false);
   const [careerError, setCareerError] = useState("");
+  const careerRequestInProgress = useRef(false);
   const [aiStatus, setAiStatus] = useState("checking");
 
   const [interviewRole, setInterviewRole] = useState("Python Developer");
@@ -410,6 +433,11 @@ const handleResendOtp = async () => {
       return;
     }
 
+    if (file.size > MAX_RESUME_FILE_SIZE) {
+      alert("PDF resumes must be 10 MiB or smaller.");
+      return;
+    }
+
     try {
       setUploading(true);
       setAtsResult(null);
@@ -640,6 +668,7 @@ try {
       console.log("JOB MATCH RESULT:", data);
 
       setMatchResult(data);
+      setMatchedJobDescription(jobDescription);
       setActivePage("Job Match");
     } catch (error) {
       console.error("Job match error:", error);
@@ -655,7 +684,7 @@ try {
 
   const renderDashboard = () => {
     return (
-      <div className="page-content">
+      <div className="page-content dashboard-content">
 
         <div className="page-header">
           <div>
@@ -1022,7 +1051,7 @@ try {
 
   const renderResumeAnalyzer = () => {
     return (
-      <div className="page-content">
+      <div className="page-content resume-analyzer-page">
 
         <div className="page-header">
 
@@ -1047,7 +1076,30 @@ try {
 
         {/* UPLOAD CARD */}
 
-        <div className="upload-card">
+        <div
+          className={`upload-card resume-upload-card ${
+            resumeDragActive ? "is-dragging" : ""
+          }`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            if (!uploading) setResumeDragActive(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (!uploading) setResumeDragActive(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              setResumeDragActive(false);
+            }
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setResumeDragActive(false);
+            if (!uploading) handleUpload(event.dataTransfer.files[0]);
+          }}
+        >
 
           <div className="upload-icon">
             📄
@@ -1060,8 +1112,11 @@ try {
           </h2>
 
           <p>
-            Upload a PDF resume or paste your
-            resume text.
+            Drop a PDF here, choose one below, or paste your resume text.
+          </p>
+
+          <p className="resume-upload-guidance">
+            PDF only · Maximum file size 10 MiB
           </p>
 
           <label className="upload-btn">
@@ -1073,8 +1128,8 @@ try {
             <input
               type="file"
               accept=".pdf"
-              hidden
               disabled={uploading}
+              aria-label="Choose a PDF resume"
               onChange={(event) =>
                 handleUpload(
                   event.target.files[0]
@@ -1098,7 +1153,7 @@ try {
           </button>
 
           {showPaste && (
-            <div className="paste-box">
+            <div className="paste-box resume-paste-box">
 
               <textarea
                 value={pastedResume}
@@ -1128,7 +1183,7 @@ try {
         {/* CURRENT RESUME */}
 
         {resumeData && (
-          <div className="resume-preview-card">
+          <div className="resume-preview-card resume-current-card">
 
             <div>
 
@@ -1199,7 +1254,7 @@ try {
 
             {/* SCORE */}
 
-            <div className="result-score-card">
+            <div className="result-score-card resume-result-score-card">
 
               <div className="score-circle">
 
@@ -1262,8 +1317,12 @@ try {
                 <h2>Resume Content Quality</h2>
               </div>
               <div className="quality-score-summary">
-                <strong>{atsResult.resume_quality?.score ?? "--"}/100</strong>
-                <span>{atsResult.resume_quality?.message}</span>
+                <strong className="quality-score-value">
+                  {atsResult.resume_quality?.score ?? "--"}/100
+                </strong>
+                <span className="quality-score-message">
+                  {atsResult.resume_quality?.message}
+                </span>
               </div>
               <div className="score-breakdown-grid">
                 {Object.entries(
@@ -1282,7 +1341,7 @@ try {
             {/* SCORE BREAKDOWN */}
 
             {atsResult.ats_readability?.status === "scored" && (
-              <div className="analysis-section">
+              <div className="analysis-section ats-score-breakdown-section">
 
                 <div className="section-title">
 
@@ -1296,7 +1355,7 @@ try {
 
                 </div>
 
-                <div className="score-breakdown-grid">
+                <div className="score-breakdown-grid ats-score-breakdown-grid">
                   {Object.entries(
                     atsResult.ats_readability.categories
                   ).map(([key, category]) => (
@@ -1309,7 +1368,7 @@ try {
                   ))}
                 </div>
 
-                <div className="score-total">
+                <div className="score-total ats-readability-summary">
 
                   <span>ATS-style readability estimate</span>
 
@@ -1533,7 +1592,7 @@ try {
 
   const renderJobMatch = () => {
     return (
-      <div className="page-content">
+      <div className="page-content job-match-page">
 
         <div className="page-header">
 
@@ -1548,8 +1607,8 @@ try {
             </h1>
 
             <p>
-              Compare your resume with a specific
-              job description.
+              See how your resume’s detected skills align with a role’s
+              requirements.
             </p>
 
           </div>
@@ -1557,7 +1616,7 @@ try {
         </div>
 
         {!resumeData && (
-          <div className="notice-card">
+          <div className="notice-card job-match-notice">
 
             <span>
               ⚠️
@@ -1579,13 +1638,26 @@ try {
           </div>
         )}
 
-        <div className="job-input-card">
+        <div
+          className="job-input-card job-match-input-card"
+          aria-busy={matching}
+        >
 
-          <label>
-            Job Description
+          <div className="job-match-form-heading">
+            <span className="job-match-step">01</span>
+            <div>
+              <h2>Compare with a job description</h2>
+              <p>Paste role details to identify overlapping and missing skills.</p>
+            </div>
+          </div>
+
+          <label htmlFor="job-description">
+            Job description
           </label>
 
           <textarea
+            id="job-description"
+            className="job-description-input"
             value={jobDescription}
             onChange={(event) =>
               setJobDescription(
@@ -1599,54 +1671,88 @@ try {
             className="primary-btn large-btn"
             onClick={analyzeJob}
             disabled={matching}
+            aria-live="polite"
           >
             {matching
-              ? "Analyzing Job..."
+              ? "Analyzing match..."
               : "Analyze Career Match"}
           </button>
+
+          {matching && (
+            <p className="job-match-loading" role="status">
+              Comparing detected resume skills with the job requirements…
+            </p>
+          )}
 
         </div>
 
         {matchResult && (
           <div className="match-results">
 
-            {/* MATCH SCORE */}
+            <div className="job-match-overview">
+              {/* MATCH SCORE */}
 
-            <div className="match-score-card">
+              <div className="match-score-card job-match-score-card">
 
-              <div className="match-circle">
+                <div className="match-circle">
 
-                <strong>
-                  {matchResult.match_percentage}%
-                </strong>
+                  <strong>
+                    {matchResult.match_percentage}%
+                  </strong>
+
+                </div>
+
+                <div className="job-match-score-copy">
+
+                  <p className="eyebrow">
+                    RESUME SKILL MATCH
+                  </p>
+
+                  <h2>
+                    {matchResult.match_percentage >= 80
+                      ? "Strong Match"
+                      : matchResult.match_percentage >= 60
+                      ? "Moderate Match"
+                      : "Needs Improvement"}
+                  </h2>
+
+                  <p>
+                    {matchResult.matched_skills?.length || 0}
+                    {" "}
+                    skills matched out of{" "}
+                    {matchResult.job_skills?.length || 0}
+                    {" "}
+                    identified job skills.
+                  </p>
+
+                  <div
+                    className="job-match-progress-track"
+                    role="progressbar"
+                    aria-label="Resume skill match"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={matchResult.match_percentage}
+                  >
+                    <span
+                      className="job-match-progress-fill"
+                      style={{
+                        width: `${matchResult.match_percentage}%`,
+                      }}
+                    />
+                  </div>
+
+                </div>
 
               </div>
 
-              <div>
-
-                <p className="eyebrow">
-                  CAREER MATCH
-                </p>
-
-                <h2>
-                  {matchResult.match_percentage >= 80
-                    ? "Strong Match"
-                    : matchResult.match_percentage >= 60
-                    ? "Moderate Match"
-                    : "Needs Improvement"}
-                </h2>
-
-                <p>
-                  {matchResult.matched_skills?.length || 0}
-                  {" "}
-                  skills matched out of{" "}
-                  {matchResult.job_skills?.length || 0}
-                  {" "}
-                  identified job skills.
-                </p>
-
-              </div>
-
+              <section className="job-target-card">
+                <span className="job-target-label">ANALYZED ROLE</span>
+                <h2>Job description</h2>
+                <details className="job-target-description">
+                  <summary>View submitted description</summary>
+                  <p>{matchedJobDescription}</p>
+                </details>
+              </section>
             </div>
 
             {/* MATCHED / MISSING */}
@@ -1741,15 +1847,21 @@ try {
     );
   };
   
-  const askCareerAssistant = async (event) => {
-    event.preventDefault();
+  const askCareerAssistant = async (
+    event,
+    submittedQuestion = careerQuestion
+  ) => {
+    event?.preventDefault();
 
-    const question = careerQuestion.trim();
-    if (!question || careerLoading) return;
+    const question = submittedQuestion.trim();
+    if (!question || careerRequestInProgress.current) return;
 
+    careerRequestInProgress.current = true;
     setCareerLoading(true);
     setCareerError("");
     setCareerAnswer("");
+    setCareerSubmittedQuestion(question);
+    setCareerQuestion("");
 
     try {
       const response = await fetch(`${API_BASE_URL}/career/ask`, {
@@ -1772,68 +1884,173 @@ try {
     } catch (error) {
       setCareerError(error.message || "Could not connect to the backend.");
     } finally {
+      careerRequestInProgress.current = false;
       setCareerLoading(false);
     }
   };
 
   const renderCareerAssistant = () => (
-    <div className="page-content">
+    <div className="page-content career-assistant-page">
       <div className="page-header">
         <div>
           <p className="eyebrow">HIREMATE AI</p>
-          <h1>🤖 AI Career Assistant</h1>
-          <p>Get career advice based on your resume.</p>
+          <h1>AI Career Assistant</h1>
+          <p>Practical career guidance, grounded in your resume when relevant.</p>
         </div>
       </div>
 
-      <div className="coming-soon-card">
-        <h2>Ask your career question</h2>
+      <section className="career-chat-shell" aria-label="AI Career Assistant">
+        <header className="career-chat-header">
+          <span className="career-assistant-mark" aria-hidden="true">AI</span>
+          <div className="career-chat-heading">
+            <h2>HireMate Career Assistant</h2>
+            <p>Resume advice, interview preparation, and career planning</p>
+          </div>
+          <div className={`career-chat-status ${aiStatus}`} role="status">
+            <span className={`status-dot ${aiStatus}`} aria-hidden="true" />
+            <span>
+              {aiStatus === "configured"
+                ? "Groq connected"
+                : aiStatus === "not-configured"
+                  ? "AI setup needed"
+                  : aiStatus === "unavailable"
+                    ? "Backend unavailable"
+                    : "Checking connection"}
+            </span>
+          </div>
+        </header>
 
-        <form onSubmit={askCareerAssistant}>
-          <textarea
-            value={careerQuestion}
-            onChange={(event) => setCareerQuestion(event.target.value)}
-            placeholder="Ask about Python, skills, projects, or interviews..."
-            rows={4}
-            maxLength={4000}
-            required
-            disabled={careerLoading}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "14px",
-              marginTop: "12px",
-              font: "inherit",
-              borderRadius: "10px",
-            }}
-          />
+        <div className="career-chat-messages" aria-live="polite">
+          {!careerSubmittedQuestion && !careerAnswer && !careerError && !careerLoading ? (
+            <div className="career-chat-welcome">
+              <span className="career-welcome-mark" aria-hidden="true">✦</span>
+              <h3>What would you like to work on?</h3>
+              <p>
+                Ask a career question for practical advice based on your resume,
+                skills, and goals.
+              </p>
+              <div className="career-suggested-prompts" aria-label="Suggested questions">
+                {[
+                  "Help me improve my resume.",
+                  "Prepare me for a Python interview.",
+                  "Find skills I need to learn for my target role.",
+                  "Help me prepare for HR interview questions.",
+                ].map((prompt) => (
+                  <button
+                    className="career-suggested-prompt"
+                    key={prompt}
+                    type="button"
+                    disabled={careerLoading}
+                    onClick={() => askCareerAssistant(null, prompt)}
+                  >
+                    <span aria-hidden="true">↗</span>
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="career-chat-thread">
+              {careerSubmittedQuestion && (
+                <article className="career-message career-message-user">
+                  <div className="career-message-meta">
+                    <span>You</span>
+                  </div>
+                  <p>{careerSubmittedQuestion}</p>
+                </article>
+              )}
 
-          <button
-            type="submit"
-            disabled={careerLoading || !careerQuestion.trim()}
-            style={{ marginTop: "12px" }}
-          >
-            {careerLoading ? "Thinking..." : "Ask AI"}
-          </button>
+              {(careerLoading || careerAnswer || careerError) && (
+                <article className="career-message career-message-assistant">
+                  <div className="career-message-meta">
+                    <span className="career-message-avatar" aria-hidden="true">AI</span>
+                    <span>HireMate AI</span>
+                  </div>
+                  {careerLoading ? (
+                    <div className="career-thinking" role="status">
+                      <span className="career-thinking-dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      Preparing career guidance…
+                    </div>
+                  ) : careerError ? (
+                    <div className="career-assistant-error" role="alert">
+                      <p>{careerError}</p>
+                      <button
+                        className="career-retry-button"
+                        type="button"
+                        disabled={careerLoading}
+                        onClick={() =>
+                          askCareerAssistant(null, careerSubmittedQuestion)
+                        }
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="career-response-markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {careerAnswer}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </article>
+              )}
+            </div>
+          )}
+        </div>
+
+        <form
+          className="career-assistant-form"
+          onSubmit={askCareerAssistant}
+        >
+          <label className="career-composer-label" htmlFor="career-question">
+            Your question
+          </label>
+          <div className="career-composer">
+            <textarea
+              id="career-question"
+              className="career-question-input"
+              value={careerQuestion}
+              onChange={(event) => setCareerQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="Ask about resumes, interviews, skills, or career goals…"
+              rows={2}
+              maxLength={4000}
+              required
+              disabled={careerLoading}
+              aria-describedby="career-composer-hint"
+            />
+
+            <button
+              type="submit"
+              className="primary-btn career-send-button"
+              disabled={careerLoading || !careerQuestion.trim()}
+              aria-label={careerLoading ? "Sending question" : "Send question"}
+            >
+              {careerLoading ? "Sending…" : "Send"}
+              {!careerLoading && <span aria-hidden="true">↑</span>}
+            </button>
+          </div>
+          <div className="career-composer-footer">
+            <span id="career-composer-hint">
+              Enter to send · Shift+Enter for a new line
+            </span>
+            <span>{careerQuestion.length}/4000</span>
+          </div>
         </form>
-
-        {careerError && (
-          <p role="alert" style={{ color: "#dc2626" }}>
-            {careerError}
-          </p>
-        )}
-
-        {careerAnswer && (
-          <div style={{ marginTop: "24px", textAlign: "left" }}>
-            <h3>AI Response</h3>
-            <div style={{ lineHeight: 1.7, overflowX: "auto" }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {careerAnswer}
-            </ReactMarkdown>
-          </div>
-          </div>
-        )}
-      </div>  
+      </section>
     </div>
   );
   
@@ -2194,7 +2411,7 @@ const renderLearningRoadmap = () => {
     : 0;
 
   return (
-    <div className="page-content">
+    <div className="page-content learning-roadmap-page">
       <div className="page-header">
         <div>
           <p className="eyebrow">PERSONALIZED LEARNING</p>
@@ -2287,7 +2504,7 @@ const renderLearningRoadmap = () => {
         </form>
 
         {roadmapError && (
-          <p role="alert" style={{ color: "#dc2626", marginTop: "16px" }}>
+          <p className="roadmap-error" role="alert">
             {roadmapError}
           </p>
         )}
@@ -2312,21 +2529,16 @@ const renderLearningRoadmap = () => {
 
             <h3>Overall progress: {progress}%</h3>
             <div
-              style={{
-                height: "10px",
-                background: "#e5e7eb",
-                borderRadius: "8px",
-                overflow: "hidden",
-                marginBottom: "12px",
-              }}
+              className="roadmap-progress-track"
+              role="progressbar"
+              aria-label="Learning roadmap progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progress}
             >
               <div
-                style={{
-                  width: `${progress}%`,
-                  height: "100%",
-                  background: "#4f46e5",
-                  transition: "width 0.2s",
-                }}
+                className="roadmap-progress-fill"
+                style={{ width: `${progress}%` }}
               />
             </div>
             <p>
@@ -2434,8 +2646,128 @@ const renderLearningRoadmap = () => {
 
 
 const renderAuthPage = () => (
-  <div className="auth-page">
-    <form className="auth-card" onSubmit={handleAuthSubmit}>
+  <div
+    className={`auth-page ${
+      authMode === "login" || authMode === "register"
+        ? "auth-page-split"
+        : ""
+    } ${authMode === "login" ? "auth-page-login" : ""} ${
+      authMode === "register" ? "auth-page-register" : ""
+    }`}
+  >
+    {(authMode === "login" || authMode === "register") && (
+      <aside className="auth-brand-panel" aria-label="About HireMate AI">
+        <div className="auth-brand">
+          <span className="auth-brand-logo" aria-hidden="true">H</span>
+          <span>HireMate <strong>AI</strong></span>
+        </div>
+
+        {authMode === "login" ? (
+          <>
+            <div className="auth-login-promo-copy">
+              <p className="auth-login-eyebrow">YOUR CAREER, IN FOCUS</p>
+              <h2>Your next opportunity starts here.</h2>
+              <p>
+                Make every application count with practical tools for your
+                next career move.
+              </p>
+            </div>
+
+            <div className="auth-login-cards" aria-label="HireMate AI tools">
+              <article className="auth-login-float-card auth-login-card-resume">
+                <span className="auth-login-card-icon" aria-hidden="true">R</span>
+                <span>
+                  <strong>Resume Insights</strong>
+                  <small>Skills and improvement suggestions</small>
+                </span>
+              </article>
+              <article className="auth-login-float-card auth-login-card-match">
+                <span className="auth-login-card-icon" aria-hidden="true">M</span>
+                <span>
+                  <strong>Job Match</strong>
+                  <small>Skills aligned with a target role</small>
+                </span>
+              </article>
+              <article className="auth-login-float-card auth-login-card-interview">
+                <span className="auth-login-card-icon" aria-hidden="true">I</span>
+                <span>
+                  <strong>Interview Prep</strong>
+                  <small>Practice and preparation progress</small>
+                </span>
+              </article>
+            </div>
+
+            <div className="auth-login-quote">
+              <p>“A clearer path to your next opportunity starts with one step.”</p>
+              <span>Your AI career companion.</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="auth-brand-copy">
+              <p className="auth-brand-eyebrow">YOUR CAREER, IN FOCUS</p>
+              <h2>Your next opportunity starts here.</h2>
+              <p className="auth-brand-description">
+                Make every application count with practical tools for your next
+                career move.
+              </p>
+
+              <ul className="auth-benefits">
+                <li>
+                  <span aria-hidden="true">01</span>
+                  <span>
+                    <strong>Make your resume stand out</strong>
+                    <small>Get clear, actionable resume insights.</small>
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true">02</span>
+                  <span>
+                    <strong>Find your strongest job matches</strong>
+                    <small>See how your skills align with a role.</small>
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true">03</span>
+                  <span>
+                    <strong>Walk into interviews prepared</strong>
+                    <small>Practice and build confidence at your pace.</small>
+                  </span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="auth-brand-visual" aria-hidden="true">
+              <div className="auth-visual-orbit" />
+              <div className="auth-visual-card">
+                <span className="auth-visual-heading">Your career toolkit</span>
+                <span className="auth-visual-line">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span className="auth-visual-caption">
+                  Resume <b>·</b> Job match <b>·</b> Interview
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+      </aside>
+    )}
+
+    <form
+      className={`auth-card ${
+        authMode === "login"
+          ? "auth-card-login"
+          : authMode === "register"
+            ? "auth-card-register"
+            : ""
+      }`}
+      onSubmit={handleAuthSubmit}
+    >
       <div className="auth-logo">H</div>
 
       <h1>
@@ -2701,7 +3033,7 @@ const renderPage = () => {
 }
 
 return (
-  <div className="app-shell">
+  <div className="app-shell" data-theme={theme}>
 
       {/* SIDEBAR */}
 
@@ -2870,6 +3202,29 @@ return (
             <span className="ai-badge">
               ✨ AI Powered
             </span>
+
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+              onClick={() =>
+                setTheme((currentTheme) =>
+                  currentTheme === "light" ? "dark" : "light"
+                )
+              }
+            >
+              {theme === "light" ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20.2 15.4A8.5 8.5 0 0 1 8.6 3.8 8.5 8.5 0 1 0 20.2 15.4Z" />
+                </svg>
+              )}
+            </button>
 
             <div className="profile">
               <button
@@ -3158,6 +3513,10 @@ function ScoreBreakdown({
         <strong>
           {safeScore}/{safeMax}
         </strong>
+
+        <span className="score-breakdown-percent">
+          {percentage}%
+        </span>
 
       </div>
 
