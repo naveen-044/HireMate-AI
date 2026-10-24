@@ -9,7 +9,9 @@ from .routers import resume, roadmap
 from .services.groq_config import get_groq_model, is_groq_configured
 
 app = FastAPI()
-if os.getenv("APP_ENV", "development").strip().lower() != "production":
+is_production = os.getenv("APP_ENV", "development").strip().lower() == "production"
+is_vercel_deployment = bool(os.getenv("VERCEL"))
+if not is_production and not is_vercel_deployment:
     Base.metadata.create_all(bind=engine)
 
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")

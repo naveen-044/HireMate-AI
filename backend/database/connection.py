@@ -1,5 +1,6 @@
 
 import os
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -19,15 +20,27 @@ connect_args = {}
 
 if database_url.drivername == "mysql+pymysql":
     backend_dir = Path(__file__).resolve().parents[1]
+    ca_pem = os.getenv("MYSQL_SSL_CA_PEM", "").strip()
     configured_ca_path = os.getenv("MYSQL_SSL_CA", "").strip()
-    ca_cert_path = (
-        Path(configured_ca_path).expanduser()
-        if configured_ca_path
-        else backend_dir / "ca.pem"
-    )
-    if not ca_cert_path.is_absolute():
-        ca_cert_path = backend_dir / ca_cert_path
-    ca_cert_path = ca_cert_path.resolve()
+    if ca_pem:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".pem",
+            prefix="hiremate-aiven-ca-",
+            delete=False,
+        ) as ca_file:
+            ca_file.write(ca_pem)
+            ca_cert_path = Path(ca_file.name)
+    else:
+        ca_cert_path = (
+            Path(configured_ca_path).expanduser()
+            if configured_ca_path
+            else backend_dir / "ca.pem"
+        )
+        if not ca_cert_path.is_absolute():
+            ca_cert_path = backend_dir / ca_cert_path
+        ca_cert_path = ca_cert_path.resolve()
     if not ca_cert_path.is_file():
         raise FileNotFoundError("Configured MySQL CA certificate was not found")
     connect_args["ssl"] = {"ca": str(ca_cert_path)}
