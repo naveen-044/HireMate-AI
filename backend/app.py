@@ -42,6 +42,7 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {
         "status": "ok",
@@ -53,10 +54,10 @@ def health():
     }
 
 
-app.include_router(resume.router)
-app.include_router(job.router)
-app.include_router(career.router)
-app.include_router(mock_interview.router)
-app.include_router(roadmap.router)
-app.include_router(auth.router)
-app.include_router(progress_router.router)
+app.include_router(resume.router, prefix="/api")
+app.include_router(job.router, prefix="/api")
+app.include_router(career.router, prefix="/api")
+app.include_router(mock_interview.router, prefix="/api")
+app.include_router(roadmap.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(progress_router.router, prefix="/api")
