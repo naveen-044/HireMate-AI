@@ -9,7 +9,9 @@ node_modules/
 .pytest_cache/
 backend/uploads/*
 backend/temp_resume.pdf
+backend/skill_cache.json
 **/.env
 **/venv/
 **/.venv/
 **/__pycache__/
+backend/ca.pem

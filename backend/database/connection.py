@@ -4,6 +4,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -13,9 +14,28 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is missing from backend/.env")
 
+database_url = make_url(DATABASE_URL)
+connect_args = {}
+
+if database_url.drivername == "mysql+pymysql":
+    backend_dir = Path(__file__).resolve().parents[1]
+    configured_ca_path = os.getenv("MYSQL_SSL_CA", "").strip()
+    ca_cert_path = (
+        Path(configured_ca_path).expanduser()
+        if configured_ca_path
+        else backend_dir / "ca.pem"
+    )
+    if not ca_cert_path.is_absolute():
+        ca_cert_path = backend_dir / ca_cert_path
+    ca_cert_path = ca_cert_path.resolve()
+    if not ca_cert_path.is_file():
+        raise FileNotFoundError("Configured MySQL CA certificate was not found")
+    connect_args["ssl"] = {"ca": str(ca_cert_path)}
+
 engine = create_engine(
-    DATABASE_URL,
+    database_url,
     pool_pre_ping=True,
+    connect_args=connect_args,
 )
 
 SessionLocal = sessionmaker(
