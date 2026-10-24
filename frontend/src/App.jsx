@@ -1,8 +1,109 @@
-import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000"
+  ).replace(/\/$/, "");
+
+async function readAuthResponse(response) {
+  const body = await response.text();
+
+  if (!body) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(body);
+  } catch {
+    if (!response.ok) {
+      throw new Error(body || `${response.status} ${response.statusText}`);
+    }
+    throw new Error("The server returned an invalid response.");
+  }
+}
+
 function App() {
+  const [myProgress, setMyProgress] = useState([]);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
+  const loadMyProgress = async () => {
+  if (!authToken) return;
+
+  setProgressLoading(true);
+  setProgressError("");
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/progress`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.detail || "Could not load progress.");
+    }
+
+    setMyProgress(data);
+  } catch (error) {
+    setProgressError(error.message || "Could not load progress.");
+  } finally {
+    setProgressLoading(false);
+  }
+};
+  const [showProfile, setShowProfile] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [activePage, setActivePage] = useState("Dashboard");
+
+  const [authMode, setAuthMode] = useState("login");
+  const [authUser, setAuthUser] = useState(null);
+  const [authToken, setAuthToken] = useState(
+    () => localStorage.getItem("hiremate-token") || ""
+  );
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authOtp, setAuthOtp] = useState("");
+  const [resendCountdown, setResendCountdown] = useState(60);
+  useEffect(() => {
+    if (!["verify", "reset"].includes(authMode) || resendCountdown <= 0) return;
+
+  const timer = setTimeout(() => {
+    setResendCountdown((previous) => previous - 1);
+  }, 1000);
+
+  return () => clearTimeout(timer);
+}, [authMode, resendCountdown]);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [authSuccess, setAuthSuccess] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const authRequestInProgress = useRef(false);
+  const resendRequestInProgress = useRef(false);
+
+  // Learning Roadmap state
+  const [roadmapRole, setRoadmapRole] = useState("Python Developer");
+  const [roadmapLevel, setRoadmapLevel] = useState("Beginner");
+  const [roadmapDuration, setRoadmapDuration] = useState(8);
+  const [roadmapHours, setRoadmapHours] = useState(10);
+  const [roadmapData, setRoadmapData] = useState(null);
+  const [roadmapLoading, setRoadmapLoading] = useState(false);
+  const [roadmapError, setRoadmapError] = useState("");
+
+  const [roadmapCompletedTasks, setRoadmapCompletedTasks] = useState(() => {
+    try {
+      const saved = localStorage.getItem(
+        "hiremate-roadmap-completed-tasks"
+      );
+      return saved ? JSON.parse(saved) : {};
+    } catch (error) {
+      console.error("Could not load roadmap progress:", error);
+      return {};
+    }
+  });
 
   const [resumeData, setResumeData] = useState(null);
   const [jobDescription, setJobDescription] = useState("");
@@ -10,11 +111,292 @@ function App() {
   const [atsResult, setAtsResult] = useState(null);
 
   const [pastedResume, setPastedResume] = useState("");
+  const [editedResumeText, setEditedResumeText] = useState("");
   const [showPaste, setShowPaste] = useState(false);
 
   const [uploading, setUploading] = useState(false);
+  const [savingResume, setSavingResume] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [matching, setMatching] = useState(false);
+
+  const [careerQuestion, setCareerQuestion] = useState("");
+  const [careerAnswer, setCareerAnswer] = useState("");
+  const [careerLoading, setCareerLoading] = useState(false);
+  const [careerError, setCareerError] = useState("");
+  const [aiStatus, setAiStatus] = useState("checking");
+
+  const [interviewRole, setInterviewRole] = useState("Python Developer");
+  const [interviewDifficulty, setInterviewDifficulty] =
+    useState("Intermediate");
+  const [interviewType, setInterviewType] = useState("Technical");
+  const [interviewQuestionCount, setInterviewQuestionCount] = useState(5);
+
+  const [interviewQuestions, setInterviewQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [interviewAnswer, setInterviewAnswer] = useState("");
+  const [interviewFeedback, setInterviewFeedback] = useState(null);
+  const [interviewLoading, setInterviewLoading] = useState(false);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [interviewError, setInterviewError] = useState("");
+
+  // Save roadmap progress automatically
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "hiremate-roadmap-completed-tasks",
+        JSON.stringify(roadmapCompletedTasks)
+      );
+    } catch (error) {
+      console.error("Could not save roadmap progress:", error);
+    }
+  }, [roadmapCompletedTasks]);
+  
+  
+const handleAuthSubmit = async (event) => {
+  event.preventDefault();
+  if (authRequestInProgress.current) return;
+
+  authRequestInProgress.current = true;
+  setAuthError("");
+  setAuthSuccess("");
+  setAuthLoading(true);
+
+  try {
+    const isRegister = authMode === "register";
+    const isVerify = authMode === "verify";
+    const isPasswordResetRequest = authMode === "forgot";
+    const isPasswordResetConfirm = authMode === "reset";
+
+    const endpoint = isRegister
+      ? "/auth/register"
+      : isVerify
+        ? "/auth/verify-email"
+        : isPasswordResetRequest
+          ? "/auth/password-reset/request"
+          : isPasswordResetConfirm
+            ? "/auth/password-reset/confirm"
+            : "/auth/login";
+
+    const payload = isRegister
+      ? {
+          full_name: authName.trim(),
+          email: authEmail.trim().toLowerCase(),
+          password: authPassword,
+        }
+      : isVerify
+        ? {
+            email: authEmail.trim().toLowerCase(),
+            otp: authOtp.trim(),
+          }
+        : isPasswordResetRequest
+          ? { email: authEmail.trim().toLowerCase() }
+          : isPasswordResetConfirm
+            ? {
+                email: authEmail.trim().toLowerCase(),
+                otp: authOtp.trim(),
+                new_password: authPassword,
+              }
+        : {
+            email: authEmail.trim().toLowerCase(),
+            password: authPassword,
+          };
+
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await readAuthResponse(response);
+
+    if (!response.ok) {
+      throw new Error(
+        typeof data.detail === "string"
+          ? data.detail
+          : "Request failed. Please check your details."
+      );
+    }
+
+    if (isRegister) {
+      setAuthEmail(payload.email);
+      setAuthMode("verify");
+      setAuthPassword("");
+      setAuthOtp("");
+      setResendCountdown(60);
+      setAuthSuccess(
+        data.message || "OTP sent to your email. Please check your inbox."
+      );
+      return;
+    }
+
+    if (isVerify) {
+      setAuthMode("login");
+      setAuthOtp("");
+      setAuthPassword("");
+      setAuthSuccess(
+        data.message || "Email verified successfully! Please log in."
+      );
+      return;
+    }
+
+    if (isPasswordResetRequest) {
+      setAuthMode("reset");
+      setAuthOtp("");
+      setAuthPassword("");
+      setResendCountdown(60);
+      setAuthSuccess(
+        data.message || "If an eligible account exists, a reset code will be sent."
+      );
+      return;
+    }
+
+    if (isPasswordResetConfirm) {
+      setAuthMode("login");
+      setAuthOtp("");
+      setAuthPassword("");
+      setAuthSuccess(
+        data.message || "Your password has been reset. You can now log in."
+      );
+      return;
+    }
+
+    localStorage.setItem("hiremate-token", data.access_token);
+    setAuthToken(data.access_token);
+    setAuthUser(data.user);
+    setAuthPassword("");
+    setActivePage("Dashboard");
+  } catch (error) {
+    setAuthError(error.message || "Could not connect to the server.");
+  } finally {
+    authRequestInProgress.current = false;
+    setAuthLoading(false);
+  }
+};
+
+  const handleLogout = () => {
+    localStorage.removeItem("hiremate-token");
+    setAuthToken("");
+    setAuthUser(null);
+    setAuthPassword("");
+    setAuthMode("login");
+    setActivePage("Dashboard");
+  };
+  
+  useEffect(() => {
+    if (!authToken) return;
+
+    let cancelled = false;
+
+    fetch(`${API_BASE_URL}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    })
+      .then(async (response) => {
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Session expired.");
+        }
+
+        if (!cancelled) {
+          setAuthUser(data);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          localStorage.removeItem("hiremate-token");
+          setAuthToken("");
+          setAuthUser(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authToken]);
+
+
+  // Check backend health
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE_URL}/health`)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Backend health check failed.");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (active) {
+          setAiStatus(data.ai?.configured ? "configured" : "not-configured");
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAiStatus("unavailable");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+  
+
+const handleResendOtp = async () => {
+  if (
+    resendCountdown > 0 ||
+    resendLoading ||
+    authLoading ||
+    resendRequestInProgress.current
+  ) return;
+
+  resendRequestInProgress.current = true;
+  setResendLoading(true);
+  setAuthError("");
+  setAuthSuccess("");
+
+  try {
+    const endpoint = authMode === "reset"
+      ? "/auth/password-reset/request"
+      : "/auth/resend-otp";
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: authEmail.trim().toLowerCase(),
+      }),
+    });
+
+    const data = await readAuthResponse(response);
+
+    if (!response.ok) {
+      throw new Error(
+        typeof data.detail === "string"
+          ? data.detail
+          : "Could not resend OTP."
+      );
+    }
+
+    setAuthError("");
+    setAuthSuccess(
+      data.message || "A new code has been sent to your email."
+    );
+    setResendCountdown(60);
+    setAuthOtp("");
+  } catch (error) {
+    setAuthError(error.message || "Could not connect to the server.");
+  } finally {
+    resendRequestInProgress.current = false;
+    setResendLoading(false);
+  }
+};
 
   // ============================================================
   // RESUME UPLOAD
@@ -37,7 +419,7 @@ function App() {
       formData.append("file", file);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/resume/upload",
+        `${API_BASE_URL}/resume/upload`,
         {
           method: "POST",
           body: formData,
@@ -53,6 +435,36 @@ function App() {
       }
 
       setResumeData(data);
+      setEditedResumeText(data.text || "");
+      // Save resume upload activity for this logged-in user
+try {
+  const progressResponse = await fetch(`${API_BASE_URL}/progress`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({
+      feature: "Resume Analyzer",
+      activity_type: "resume_uploaded",
+      details: {
+        filename: data.filename || file.name,
+        skills_detected: data.skills?.length || 0,
+      },
+    }),
+  });
+
+  if (progressResponse.ok) {
+    await loadMyProgress();
+  } else {
+    console.error(
+      "Could not save resume progress:",
+      await progressResponse.text()
+    );
+  }
+} catch (progressError) {
+  console.error("Progress tracking error:", progressError);
+}
     } catch (error) {
       console.error("Upload error:", error);
       alert(error.message);
@@ -77,7 +489,7 @@ function App() {
       setMatchResult(null);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/resume/paste",
+        `${API_BASE_URL}/resume/paste`,
         {
           method: "POST",
           headers: {
@@ -98,6 +510,7 @@ function App() {
       }
 
       setResumeData(data);
+      setEditedResumeText(data.text || "");
       setShowPaste(false);
       setPastedResume("");
     } catch (error) {
@@ -105,6 +518,39 @@ function App() {
       alert(error.message);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const saveReviewedResume = async () => {
+    if (!editedResumeText.trim()) {
+      alert("Resume text cannot be empty.");
+      return;
+    }
+
+    try {
+      setSavingResume(true);
+      const response = await fetch(`${API_BASE_URL}/resume/review`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ resume_text: editedResumeText }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not save reviewed resume text.");
+      }
+
+      setResumeData(data);
+      setEditedResumeText(data.text || "");
+      setAtsResult(null);
+      setMatchResult(null);
+    } catch (error) {
+      console.error("Resume review error:", error);
+      alert(error.message);
+    } finally {
+      setSavingResume(false);
     }
   };
 
@@ -117,12 +563,16 @@ function App() {
       alert("Please upload or paste your resume first.");
       return;
     }
+    if (editedResumeText !== (resumeData.text || "")) {
+      alert("Save your reviewed resume text before analyzing it.");
+      return;
+    }
 
     try {
       setAnalyzing(true);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/resume/analyze",
+        `${API_BASE_URL}/resume/analyze`,
         {
           method: "POST",
         }
@@ -167,7 +617,7 @@ function App() {
       setMatching(true);
 
       const response = await fetch(
-        "http://127.0.0.1:8000/job/match",
+        `${API_BASE_URL}/job/match`,
         {
           method: "POST",
           headers: {
@@ -262,9 +712,11 @@ function App() {
               <span>ATS Score</span>
 
               <strong>
-                {atsResult?.ats_score !== undefined
+                {atsResult?.ats_score != null
                   ? `${atsResult.ats_score}/100`
-                  : "--"}
+                  : atsResult
+                    ? "PDF needed"
+                    : "--"}
               </strong>
             </div>
           </div>
@@ -328,10 +780,10 @@ function App() {
 
                 <div className="big-score">
                   <strong>
-                    {atsResult.ats_score}
+                    {atsResult.ats_score ?? "N/A"}
                   </strong>
 
-                  <span>/100</span>
+                  {atsResult.ats_score != null && <span>/100</span>}
                 </div>
 
                 <div className="score-status">
@@ -699,14 +1151,45 @@ function App() {
             <button
               className="primary-btn"
               onClick={analyzeResume}
-              disabled={analyzing}
+              disabled={
+                analyzing ||
+                editedResumeText !== (resumeData.text || "")
+              }
             >
               {analyzing
                 ? "Analyzing..."
-                : "Analyze ATS Score"}
+                : editedResumeText !== (resumeData.text || "")
+                  ? "Save reviewed text first"
+                  : "Analyze Resume"}
             </button>
 
           </div>
+        )}
+
+        {resumeData && (
+          <details className="resume-text-review">
+            <summary>Review and correct extracted resume text</summary>
+            <p>
+              Check the extracted text before analysis. Changes clear previous
+              scores so they can be recalculated from the reviewed text.
+            </p>
+            <textarea
+              aria-label="Review extracted resume text"
+              value={editedResumeText}
+              maxLength={100000}
+              onChange={(event) => setEditedResumeText(event.target.value)}
+            />
+            <button
+              className="secondary-btn"
+              onClick={saveReviewedResume}
+              disabled={
+                savingResume ||
+                editedResumeText === (resumeData.text || "")
+              }
+            >
+              {savingResume ? "Saving..." : "Save reviewed text"}
+            </button>
+          </details>
         )}
 
         {/* ATS RESULT */}
@@ -721,12 +1204,10 @@ function App() {
               <div className="score-circle">
 
                 <strong>
-                  {atsResult.ats_score}
+                  {atsResult.ats_score ?? "N/A"}
                 </strong>
 
-                <span>
-                  /100
-                </span>
+                {atsResult.ats_score != null && <span>/100</span>}
 
               </div>
 
@@ -744,8 +1225,8 @@ function App() {
                 </h2>
 
                 <p>
-                  {atsResult.ats_compatibility ||
-                    "Your resume has been analyzed for ATS compatibility."}
+                  {atsResult.ats_readability?.message ||
+                    "ATS-style readability could not be assessed."}
                 </p>
 
                 {atsResult.career_field && (
@@ -761,9 +1242,46 @@ function App() {
 
             </div>
 
+            {atsResult.ai_message && (
+              <div className="notice-card" role="status">
+                <span>ℹ️</span>
+                <div>
+                  <strong>
+                    {atsResult.ai_status === "not_configured"
+                      ? "AI features need setup"
+                      : "AI feedback unavailable"}
+                  </strong>
+                  <p>{atsResult.ai_message}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="analysis-section quality-score-section">
+              <div className="section-title">
+                <span>✍️</span>
+                <h2>Resume Content Quality</h2>
+              </div>
+              <div className="quality-score-summary">
+                <strong>{atsResult.resume_quality?.score ?? "--"}/100</strong>
+                <span>{atsResult.resume_quality?.message}</span>
+              </div>
+              <div className="score-breakdown-grid">
+                {Object.entries(
+                  atsResult.resume_quality?.categories || {}
+                ).map(([key, category]) => (
+                  <ScoreBreakdown
+                    key={key}
+                    title={`${category.label} · ${category.weight}%`}
+                    score={category.score}
+                    max={100}
+                  />
+                ))}
+              </div>
+            </div>
+
             {/* SCORE BREAKDOWN */}
 
-            {atsResult.score_breakdown && (
+            {atsResult.ats_readability?.status === "scored" && (
               <div className="analysis-section">
 
                 <div className="section-title">
@@ -779,67 +1297,24 @@ function App() {
                 </div>
 
                 <div className="score-breakdown-grid">
-
-                  <ScoreBreakdown
-                    title="Keywords"
-                    score={
-                      atsResult.score_breakdown.keywords
-                    }
-                    max={25}
-                  />
-
-                  <ScoreBreakdown
-                    title="Skills"
-                    score={
-                      atsResult.score_breakdown.skills
-                    }
-                    max={20}
-                  />
-
-                  <ScoreBreakdown
-                    title="Experience"
-                    score={
-                      atsResult.score_breakdown.experience
-                    }
-                    max={20}
-                  />
-
-                  <ScoreBreakdown
-                    title="Formatting"
-                    score={
-                      atsResult.score_breakdown.formatting
-                    }
-                    max={15}
-                  />
-
-                  <ScoreBreakdown
-                    title="Education"
-                    score={
-                      atsResult.score_breakdown.education
-                    }
-                    max={10}
-                  />
-
-                  <ScoreBreakdown
-                    title="Job Relevance"
-                    score={
-                      atsResult.score_breakdown.job_relevance
-                    }
-                    max={10}
-                  />
-
+                  {Object.entries(
+                    atsResult.ats_readability.categories
+                  ).map(([key, category]) => (
+                    <ScoreBreakdown
+                      key={key}
+                      title={`${category.label} · ${category.weight}%`}
+                      score={category.score}
+                      max={100}
+                    />
+                  ))}
                 </div>
 
                 <div className="score-total">
 
-                  <span>
-                    Total ATS Score
-                  </span>
+                  <span>ATS-style readability estimate</span>
 
                   <strong>
-                    {calculateBreakdownTotal(
-                      atsResult.score_breakdown
-                    )}
+                    {atsResult.ats_score}
                     /100
                   </strong>
 
@@ -1265,72 +1740,389 @@ function App() {
       </div>
     );
   };
+  
+  const askCareerAssistant = async (event) => {
+    event.preventDefault();
 
-  // ============================================================
-  // PLACEHOLDER
-  // ============================================================
+    const question = careerQuestion.trim();
+    if (!question || careerLoading) return;
 
-  const renderPlaceholder = (
-    title,
-    icon,
-    description
-  ) => {
+    setCareerLoading(true);
+    setCareerError("");
+    setCareerAnswer("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/career/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Unable to get an AI response."
+        );
+      }
+
+      setCareerAnswer(data.answer || "No answer received.");
+    } catch (error) {
+      setCareerError(error.message || "Could not connect to the backend.");
+    } finally {
+      setCareerLoading(false);
+    }
+  };
+
+  const renderCareerAssistant = () => (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">HIREMATE AI</p>
+          <h1>🤖 AI Career Assistant</h1>
+          <p>Get career advice based on your resume.</p>
+        </div>
+      </div>
+
+      <div className="coming-soon-card">
+        <h2>Ask your career question</h2>
+
+        <form onSubmit={askCareerAssistant}>
+          <textarea
+            value={careerQuestion}
+            onChange={(event) => setCareerQuestion(event.target.value)}
+            placeholder="Ask about Python, skills, projects, or interviews..."
+            rows={4}
+            maxLength={4000}
+            required
+            disabled={careerLoading}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "14px",
+              marginTop: "12px",
+              font: "inherit",
+              borderRadius: "10px",
+            }}
+          />
+
+          <button
+            type="submit"
+            disabled={careerLoading || !careerQuestion.trim()}
+            style={{ marginTop: "12px" }}
+          >
+            {careerLoading ? "Thinking..." : "Ask AI"}
+          </button>
+        </form>
+
+        {careerError && (
+          <p role="alert" style={{ color: "#dc2626" }}>
+            {careerError}
+          </p>
+        )}
+
+        {careerAnswer && (
+          <div style={{ marginTop: "24px", textAlign: "left" }}>
+            <h3>AI Response</h3>
+            <div style={{ lineHeight: 1.7, overflowX: "auto" }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {careerAnswer}
+            </ReactMarkdown>
+          </div>
+          </div>
+        )}
+      </div>  
+    </div>
+  );
+  
+  const startMockInterview = async (event) => {
+    event.preventDefault();
+
+    if (!interviewRole.trim() || interviewLoading) return;
+
+    setInterviewLoading(true);
+    setInterviewError("");
+    setInterviewFeedback(null);
+    setInterviewQuestions([]);
+    setCurrentQuestionIndex(0);
+    setInterviewAnswer("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/mock-interview/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: interviewRole.trim(),
+          difficulty: interviewDifficulty,
+          interview_type: interviewType,
+          question_count: Number(interviewQuestionCount),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not start the interview.");
+      }
+
+      if (!Array.isArray(data.questions) || data.questions.length === 0) {
+        throw new Error("The AI did not return any interview questions.");
+      }
+
+      setInterviewQuestions(data.questions);
+    } catch (error) {
+      setInterviewError(error.message || "Unable to connect to the backend.");
+    } finally {
+      setInterviewLoading(false);
+    }
+  };
+
+  const evaluateMockAnswer = async () => {
+    const question = interviewQuestions[currentQuestionIndex];
+
+    if (!question || !interviewAnswer.trim() || evaluationLoading) return;
+
+    setEvaluationLoading(true);
+    setInterviewError("");
+    setInterviewFeedback(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/mock-interview/evaluate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: interviewRole.trim(),
+          question: question.question,
+          answer: interviewAnswer.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not evaluate your answer.");
+      }
+
+      setInterviewFeedback(data);
+    } catch (error) {
+      setInterviewError(error.message || "Unable to evaluate your answer.");
+    } finally {
+      setEvaluationLoading(false);
+    }
+  };
+
+  const moveToNextInterviewQuestion = () => {
+    setCurrentQuestionIndex((index) => index + 1);
+    setInterviewAnswer("");
+    setInterviewFeedback(null);
+    setInterviewError("");
+  };
+
+  const renderMockInterview = () => {
+    const currentQuestion = interviewQuestions[currentQuestionIndex];
+    const interviewFinished =
+      interviewQuestions.length > 0 && !currentQuestion;
+
     return (
       <div className="page-content">
-
         <div className="page-header">
-
           <div>
+            <p className="eyebrow">AI INTERVIEW PRACTICE</p>
+            <h1>🎤 Mock Interview</h1>
+            <p>Practice answering questions and receive AI-powered feedback.</p>
+          </div>
+        </div>
 
+        {interviewQuestions.length === 0 && (
+          <div className="coming-soon-card">
+            <h2>Set up your interview</h2>
+            <p>Choose your target role and start your practice session.</p>
+
+            <form onSubmit={startMockInterview}>
+              <label htmlFor="interview-role">Target job role</label>
+              <input
+                id="interview-role"
+                value={interviewRole}
+                onChange={(event) => setInterviewRole(event.target.value)}
+                placeholder="e.g. Python Developer"
+                minLength={2}
+                maxLength={150}
+                required
+                disabled={interviewLoading}
+                style={{ display: "block", width: "100%", margin: "8px 0 16px", padding: "12px", boxSizing: "border-box" }}
+              />
+
+              <label htmlFor="interview-difficulty">Difficulty</label>
+              <select
+                id="interview-difficulty"
+                value={interviewDifficulty}
+                onChange={(event) => setInterviewDifficulty(event.target.value)}
+                disabled={interviewLoading}
+                style={{ display: "block", width: "100%", margin: "8px 0 16px", padding: "12px" }}
+              >
+                <option>Beginner</option>
+                <option>Intermediate</option>
+                <option>Advanced</option>
+              </select>
+
+              <label htmlFor="interview-type">Interview type</label>
+              <select
+                id="interview-type"
+                value={interviewType}
+                onChange={(event) => setInterviewType(event.target.value)}
+                disabled={interviewLoading}
+                style={{ display: "block", width: "100%", margin: "8px 0 16px", padding: "12px" }}
+              >
+                <option value="Technical">Technical</option>
+                <option value="HR">HR</option>
+                <option value="Mixed">Mixed</option>
+              </select>
+
+              <label htmlFor="interview-count">Number of questions</label>
+              <select
+                id="interview-count"
+                value={interviewQuestionCount}
+                onChange={(event) => setInterviewQuestionCount(Number(event.target.value))}
+                disabled={interviewLoading}
+                style={{ display: "block", width: "100%", margin: "8px 0 20px", padding: "12px" }}
+              >
+                <option value={3}>3 questions</option>
+                <option value={5}>5 questions</option>
+                <option value={10}>10 questions</option>
+              </select>
+
+              <button
+                className="primary-btn"
+                type="submit"
+                disabled={interviewLoading || !interviewRole.trim()}
+              >
+                {interviewLoading ? "Generating questions..." : "Start Interview"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {interviewError && (
+          <div className="notice-card" role="alert">
+            <span>⚠️</span>
+            <div>{interviewError}</div>
+          </div>
+        )}
+
+        {currentQuestion && (
+          <div className="coming-soon-card">
             <p className="eyebrow">
-              HIREMATE AI
+              QUESTION {currentQuestionIndex + 1} OF {interviewQuestions.length}
             </p>
 
-            <h1>
-              {icon} {title}
-            </h1>
+            <h2>{currentQuestion.question}</h2>
 
             <p>
-              {description}
+              Topic: {currentQuestion.topic || "General"} · Difficulty:{" "}
+              {currentQuestion.difficulty || interviewDifficulty}
             </p>
 
+            <label htmlFor="interview-answer">Your answer</label>
+            <textarea
+              id="interview-answer"
+              value={interviewAnswer}
+              onChange={(event) => setInterviewAnswer(event.target.value)}
+              placeholder="Write your answer here..."
+              rows={7}
+              maxLength={6000}
+              disabled={evaluationLoading || Boolean(interviewFeedback)}
+              style={{
+                display: "block",
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "14px",
+                margin: "12px 0",
+                font: "inherit",
+                borderRadius: "10px",
+              }}
+            />
+
+            {!interviewFeedback && (
+              <button
+                className="primary-btn"
+                onClick={evaluateMockAnswer}
+                disabled={evaluationLoading || !interviewAnswer.trim()}
+              >
+                {evaluationLoading ? "Evaluating..." : "Evaluate My Answer"}
+              </button>
+            )}
+
+            {interviewFeedback && (
+              <div style={{ textAlign: "left", marginTop: "24px" }}>
+                <h2>
+                  Score: {interviewFeedback.score}/10
+                </h2>
+                <h3>{interviewFeedback.verdict}</h3>
+
+                <h3>Strengths</h3>
+                {Array.isArray(interviewFeedback.strengths) &&
+                  interviewFeedback.strengths.map((item, index) => (
+                    <p key={index}>✅ {item}</p>
+                  ))}
+
+                <h3>Areas to improve</h3>
+                {Array.isArray(interviewFeedback.improvements) &&
+                  interviewFeedback.improvements.map((item, index) => (
+                    <p key={index}>💡 {item}</p>
+                  ))}
+
+                <h3>Sample answer</h3>
+                <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
+                  {interviewFeedback.sample_answer}
+                </div>
+
+                <h3>Overall feedback</h3>
+                <p>{interviewFeedback.feedback}</p>
+
+                <button
+                  className="primary-btn"
+                  style={{ marginTop: "16px" }}
+                  onClick={
+                    currentQuestionIndex < interviewQuestions.length - 1
+                      ? moveToNextInterviewQuestion
+                      : () => {
+                          setInterviewQuestions([]);
+                          setCurrentQuestionIndex(0);
+                          setInterviewAnswer("");
+                          setInterviewFeedback(null);
+                          setInterviewError("");
+                        }
+                  }
+                >
+                  {currentQuestionIndex < interviewQuestions.length - 1
+                    ? "Next Question →"
+                    : "Finish & Start Again"}
+                </button>
+              </div>
+            )}
           </div>
+        )}
 
-        </div>
-
-        <div className="coming-soon-card">
-
-          <div className="coming-icon">
-            {icon}
+        {interviewFinished && (
+          <div className="coming-soon-card">
+            <h2>🎉 Interview completed!</h2>
+            <p>You have answered all the questions in this session.</p>
+            <button
+              className="primary-btn"
+              onClick={() => {
+                setInterviewQuestions([]);
+                setCurrentQuestionIndex(0);
+                setInterviewAnswer("");
+                setInterviewFeedback(null);
+                setInterviewError("");
+              }}
+            >
+              Start Another Interview
+            </button>
           </div>
-
-          <h2>
-            {title}
-          </h2>
-
-          <p>
-            This module will be built in the
-            next development step.
-          </p>
-
-          <div className="coming-features">
-
-            <span>
-              AI Powered
-            </span>
-
-            <span>
-              Resume Based
-            </span>
-
-            <span>
-              Career Focused
-            </span>
-
-          </div>
-
-        </div>
-
+        )}
       </div>
     );
   };
@@ -1339,47 +2131,577 @@ function App() {
   // PAGE ROUTER
   // ============================================================
 
-  const renderPage = () => {
-    switch (activePage) {
 
-      case "Resume Analyzer":
-        return renderResumeAnalyzer();
+const renderLearningRoadmap = () => {
+  const generateRoadmap = async (event) => {
+    event.preventDefault();
 
-      case "Job Match":
-        return renderJobMatch();
+    if (!roadmapRole.trim() || roadmapLoading) return;
 
-      case "Career Assistant":
-        return renderPlaceholder(
-          "AI Career Assistant",
-          "🤖",
-          "Ask questions about your resume, job match, skills and career."
+    setRoadmapLoading(true);
+    setRoadmapError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/roadmap/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          role: roadmapRole.trim(),
+          current_level: roadmapLevel,
+          duration_weeks: Number(roadmapDuration),
+          hours_per_week: Number(roadmapHours),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data.detail === "string"
+            ? data.detail
+            : "Failed to generate the roadmap."
         );
+      }
 
-      case "Mock Interview":
-        return renderPlaceholder(
-          "Mock Interview",
-          "🎤",
-          "Practice interview questions based on your resume and target job."
-        );
+      if (!Array.isArray(data.weeks)) {
+        throw new Error("The response does not contain weekly plans.");
+      }
 
-      case "Learning Roadmap":
-        return renderPlaceholder(
-          "Learning Roadmap",
-          "📚",
-          "Build a personalized roadmap for the skills you need to improve."
-        );
-
-      default:
-        return renderDashboard();
+      setRoadmapData(data);
+      setRoadmapCompletedTasks({});
+    } catch (error) {
+      setRoadmapError(error.message || "Could not connect to the backend.");
+    } finally {
+      setRoadmapLoading(false);
     }
   };
+
+  const allTasks = (roadmapData?.weeks || []).flatMap((week) =>
+    (Array.isArray(week.tasks) ? week.tasks : []).map((task, index) => ({
+      key: `${week.week}-${index}`,
+      task,
+    }))
+  );
+
+  const completedCount = allTasks.filter(
+    (task) => roadmapCompletedTasks[task.key]
+  ).length;
+
+  const progress = allTasks.length
+    ? Math.round((completedCount / allTasks.length) * 100)
+    : 0;
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <p className="eyebrow">PERSONALIZED LEARNING</p>
+          <h1>📚 Learning Roadmap</h1>
+          <p>Create a weekly learning plan for your target career.</p>
+        </div>
+      </div>
+
+      <div className="coming-soon-card">
+        <h2>Build your learning plan</h2>
+
+        <form onSubmit={generateRoadmap}>
+          <label htmlFor="roadmap-role">Target job role</label>
+          <input
+            id="roadmap-role"
+            value={roadmapRole}
+            onChange={(event) => setRoadmapRole(event.target.value)}
+            placeholder="e.g. Python Developer"
+            maxLength={150}
+            required
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px",
+              margin: "8px 0 16px",
+            }}
+          />
+
+          <label htmlFor="roadmap-level">Current skill level</label>
+          <select
+            id="roadmap-level"
+            value={roadmapLevel}
+            onChange={(event) => setRoadmapLevel(event.target.value)}
+            style={{
+              display: "block",
+              width: "100%",
+              padding: "12px",
+              margin: "8px 0 16px",
+            }}
+          >
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+          </select>
+
+          <label htmlFor="roadmap-duration">Duration (weeks)</label>
+          <input
+            id="roadmap-duration"
+            type="number"
+            min="1"
+            max="24"
+            value={roadmapDuration}
+            onChange={(event) => setRoadmapDuration(event.target.value)}
+            required
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px",
+              margin: "8px 0 16px",
+            }}
+          />
+
+          <label htmlFor="roadmap-hours">Study hours per week</label>
+          <input
+            id="roadmap-hours"
+            type="number"
+            min="1"
+            max="60"
+            value={roadmapHours}
+            onChange={(event) => setRoadmapHours(event.target.value)}
+            required
+            style={{
+              display: "block",
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "12px",
+              margin: "8px 0 20px",
+            }}
+          />
+
+          <button
+            className="primary-btn"
+            type="submit"
+            disabled={roadmapLoading || !roadmapRole.trim()}
+          >
+            {roadmapLoading ? "Generating roadmap..." : "Generate Roadmap"}
+          </button>
+        </form>
+
+        {roadmapError && (
+          <p role="alert" style={{ color: "#dc2626", marginTop: "16px" }}>
+            {roadmapError}
+          </p>
+        )}
+      </div>
+
+      {roadmapData && (
+        <div style={{ marginTop: "24px" }}>
+          <div className="coming-soon-card">
+            <h2>{roadmapData.title || "Your Learning Roadmap"}</h2>
+            <p>{roadmapData.summary}</p>
+            <p>
+              <strong>Target role:</strong>{" "}
+              {roadmapData.target_role || roadmapRole}
+            </p>
+            <p>
+              <strong>Duration:</strong>{" "}
+              {roadmapData.duration_weeks || roadmapDuration} weeks
+              {" · "}
+              <strong>Study time:</strong>{" "}
+              {roadmapData.hours_per_week || roadmapHours} hours/week
+            </p>
+
+            <h3>Overall progress: {progress}%</h3>
+            <div
+              style={{
+                height: "10px",
+                background: "#e5e7eb",
+                borderRadius: "8px",
+                overflow: "hidden",
+                marginBottom: "12px",
+              }}
+            >
+              <div
+                style={{
+                  width: `${progress}%`,
+                  height: "100%",
+                  background: "#4f46e5",
+                  transition: "width 0.2s",
+                }}
+              />
+            </div>
+            <p>
+              {completedCount} of {allTasks.length} tasks completed
+            </p>
+          </div>
+
+          {(roadmapData.weeks || []).map((week) => (
+            <div
+              className="coming-soon-card"
+              key={week.week}
+              style={{ marginTop: "16px", textAlign: "left" }}
+            >
+              <h2>
+                Week {week.week}: {week.title}
+              </h2>
+
+              <h3>Topics to learn</h3>
+              <ul>
+                {(Array.isArray(week.topics) ? week.topics : []).map(
+                  (topic, index) => (
+                    <li key={index}>{topic}</li>
+                  )
+                )}
+              </ul>
+
+              <h3>Learning tasks</h3>
+              {(Array.isArray(week.tasks) ? week.tasks : []).map(
+                (task, index) => {
+                  const taskKey = `${week.week}-${index}`;
+
+                  return (
+                    <label
+                      key={taskKey}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "10px",
+                        margin: "12px 0",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(roadmapCompletedTasks[taskKey])}
+                        onChange={(event) =>
+                          setRoadmapCompletedTasks((previous) => ({
+                            ...previous,
+                            [taskKey]: event.target.checked,
+                          }))
+                        }
+                        style={{ marginTop: "5px" }}
+                      />
+                      <span
+                        style={{
+                          textDecoration: roadmapCompletedTasks[taskKey]
+                            ? "line-through"
+                            : "none",
+                        }}
+                      >
+                        {task}
+                      </span>
+                    </label>
+                  );
+                }
+              )}
+
+              {week.project && (
+                <>
+                  <h3>Mini project</h3>
+                  <p>{week.project}</p>
+                </>
+              )}
+
+              {Array.isArray(week.resources) && week.resources.length > 0 && (
+                <>
+                  <h3>Learning resources</h3>
+                  <ul>
+                    {week.resources.map((resource, index) => (
+                      <li key={index}>
+                        {resource.url &&
+                        /^https?:\/\//i.test(resource.url) ? (
+                          <a
+                            href={resource.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {resource.name || resource.url}
+                          </a>
+                        ) : (
+                          resource.name || String(resource)
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+const renderAuthPage = () => (
+  <div className="auth-page">
+    <form className="auth-card" onSubmit={handleAuthSubmit}>
+      <div className="auth-logo">H</div>
+
+      <h1>
+        {authMode === "register"
+          ? "Create account"
+          : authMode === "verify"
+            ? "Verify your email"
+            : authMode === "forgot"
+              ? "Forgot password?"
+              : authMode === "reset"
+                ? "Reset your password"
+                : "Welcome back"}
+      </h1>
+
+      <p>
+        {authMode === "register"
+          ? "Join HireMate AI and track your career progress."
+          : authMode === "verify"
+            ? `Enter the 6-digit verification code sent to ${authEmail}.`
+            : authMode === "forgot"
+              ? "Enter your account email and we’ll send a password reset code if an eligible account exists."
+              : authMode === "reset"
+                ? `Enter the reset code sent to ${authEmail} and choose a new password.`
+                : "Log in to continue your career journey."}
+      </p>
+
+      {authMode === "register" && (
+        <>
+          <label htmlFor="auth-name">Full name</label>
+          <input
+            id="auth-name"
+            value={authName}
+            onChange={(e) => setAuthName(e.target.value)}
+            minLength={2}
+            maxLength={100}
+            autoComplete="name"
+            required
+          />
+        </>
+      )}
+
+      <label htmlFor="auth-email">Email address</label>
+      <input
+        id="auth-email"
+        type="email"
+        value={authEmail}
+        onChange={(e) => setAuthEmail(e.target.value)}
+        autoComplete="email"
+        readOnly={authMode === "verify" || authMode === "reset"}
+        required
+      />
+
+      {(authMode === "verify" || authMode === "reset") && (
+        <>
+          <label htmlFor="auth-otp">
+            {authMode === "reset" ? "Password reset code" : "Verification code"}
+          </label>
+          <input
+            id="auth-otp"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            placeholder="Enter 6-digit code"
+            value={authOtp}
+            onChange={(e) =>
+              setAuthOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+            }
+            autoComplete="one-time-code"
+            required
+          />
+        </>
+      )}
+
+      {(authMode === "register" ||
+        authMode === "login" ||
+        authMode === "reset") && (
+        <>
+          <label htmlFor="auth-password">
+            {authMode === "reset"
+              ? "New password"
+              : authMode === "register"
+                ? "Password"
+                : "Password"}
+          </label>
+          <div className="password-input-wrapper">
+            <input
+              id="auth-password"
+              type={showPassword ? "text" : "password"}
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+              minLength={
+                authMode === "register" || authMode === "reset" ? 8 : undefined
+              }
+              maxLength={128}
+              autoComplete={
+                authMode === "register" || authMode === "reset"
+                  ? "new-password"
+                  : "current-password"
+              }
+              required
+            />
+
+            <button
+              type="button"
+              className="password-toggle"
+              onClick={() =>
+                setShowPassword((previous) => !previous)
+              }
+              aria-label={
+                showPassword ? "Hide password" : "Show password"
+              }
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {authMode === "login" && (
+        <p className="auth-forgot">
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("forgot");
+              setAuthError("");
+              setAuthSuccess("");
+              setAuthPassword("");
+            }}
+          >
+            Forgot password?
+          </button>
+        </p>
+      )}
+
+{authError && !authSuccess && (
+  <p className="auth-message" role="alert">
+    {authError}
+  </p>
+)}
+
+{authSuccess && (
+  <p className="auth-message" role="status">
+    {authSuccess}
+  </p>
+)}
+
+{(authMode === "verify" || authMode === "reset") && (
+  <div className="resend-otp-section">
+    <button
+      type="button"
+      className="auth-resend-btn"
+      onClick={handleResendOtp}
+      disabled={authLoading || resendCountdown > 0 || resendLoading}
+    >
+      {resendLoading
+        ? "Sending..."
+        : resendCountdown > 0
+          ? `Resend OTP in ${resendCountdown}s`
+          : "Resend OTP"}
+    </button>
+  </div>
+)}
+
+<button
+  className="primary-btn auth-submit"
+  type="submit"
+  disabled={authLoading}
+>
+  {authLoading
+    ? "Please wait..."
+    : authMode === "register"
+      ? "Create account"
+      : authMode === "verify"
+        ? "Verify Email"
+        : authMode === "forgot"
+          ? "Send reset code"
+          : authMode === "reset"
+            ? "Reset password"
+            : "Log in"}
+</button>
+      <p className="auth-switch">
+        {authMode === "verify" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("register");
+              setAuthOtp("");
+              setAuthError("");
+              setAuthSuccess("");
+            }}
+          >
+            Back to registration
+          </button>
+        ) : authMode === "forgot" || authMode === "reset" ? (
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("login");
+              setAuthOtp("");
+              setAuthPassword("");
+              setAuthError("");
+              setAuthSuccess("");
+            }}
+          >
+            Back to log in
+          </button>
+        ) : (
+          <>
+            {authMode === "register"
+              ? "Already have an account?"
+              : "New to HireMate AI?"}{" "}
+
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode(
+                  authMode === "register" ? "login" : "register"
+                );
+                setAuthError("");
+                setAuthSuccess("");
+              }}
+            >
+              {authMode === "register" ? "Log in" : "Create account"}
+            </button>
+          </>
+        )}
+      </p>
+    </form>
+  </div>
+);
+
+
+const renderPage = () => {
+  switch (activePage) {
+    case "Resume Analyzer":
+      return renderResumeAnalyzer();
+
+    case "Job Match":
+      return renderJobMatch();
+
+    case "Career Assistant":
+      return renderCareerAssistant();
+
+    case "Mock Interview":
+      return renderMockInterview();
+
+    case "Learning Roadmap":
+      return renderLearningRoadmap();
+
+    default:
+      return renderDashboard();
+  }
+};
+
 
   // ============================================================
   // MAIN UI
   // ============================================================
 
-  return (
-    <div className="app-shell">
+  if (!authToken || !authUser) {
+  return renderAuthPage();
+}
+
+return (
+  <div className="app-shell">
 
       {/* SIDEBAR */}
 
@@ -1495,7 +2817,7 @@ function App() {
 
           <div className="ai-status">
 
-            <span className="status-dot"></span>
+            <span className={`status-dot ${aiStatus}`}></span>
 
             <div>
 
@@ -1504,7 +2826,13 @@ function App() {
               </strong>
 
               <small>
-                Ready to analyze
+                {aiStatus === "configured"
+                  ? "Groq connected"
+                  : aiStatus === "not-configured"
+                    ? "AI setup needed"
+                    : aiStatus === "unavailable"
+                      ? "Backend unavailable"
+                      : "Checking connection..."}
               </small>
 
             </div>
@@ -1544,30 +2872,150 @@ function App() {
             </span>
 
             <div className="profile">
-
-              <div className="profile-avatar">
-                N
-              </div>
-
-              <div>
-
-                <strong>
-                  Naveen
-                </strong>
-
-                <span>
-                  Job Seeker
+              <button
+                type="button"
+                className="profile-trigger"
+                aria-label="Open your profile"
+                onClick={() => {
+                  setShowProfile(true);
+                  loadMyProgress();
+                }}
+              >
+                <span className="profile-avatar" aria-hidden="true">
+                  {(authUser.full_name || authUser.email || "U")
+                    .charAt(0)
+                    .toUpperCase()}
                 </span>
 
-              </div>
+                <span className="profile-identity">
+                  <strong>{authUser.full_name || authUser.email}</strong>
+                  <span>{authUser.email}</span>
+                </span>
+              </button>
 
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={handleLogout}
+              >
+                Log out
+              </button>
             </div>
 
           </div>
 
         </header>
 
-        {renderPage()}
+        {showProfile ? (
+  <section className="profile-page">
+    <button
+      type="button"
+      className="secondary-btn"
+      onClick={() => setShowProfile(false)}
+    >
+      ← Back to Dashboard
+    </button>
+
+    <h1>My Profile</h1>
+    <p>Manage your account and track your career progress.</p>
+
+    <div className="profile-details-card">
+      <h2>Personal Information</h2>
+      <p><strong>Name:</strong> {authUser.full_name || "Not provided"}</p>
+      <p><strong>Email:</strong> {authUser.email || "Not provided"}</p>
+      <p><strong>Phone:</strong> {authUser.phone || "Not provided"}</p>
+    </div>
+
+    <div className="profile-details-card">
+  <h2>My Career Progress</h2>
+
+  {progressLoading && <p>Loading your progress...</p>}
+
+  {progressError && (
+    <p className="auth-message">{progressError}</p>
+  )}
+
+  {!progressLoading && !progressError && (
+    <>
+      <p>
+        <strong>Total activities:</strong> {myProgress.length}
+      </p>
+
+      <p>
+        <strong>Resume analyses:</strong>{" "}
+        {myProgress.filter(
+          (item) => item.feature === "Resume Analyzer"
+        ).length}
+      </p>
+
+      <p>
+        <strong>Job matches:</strong>{" "}
+        {myProgress.filter(
+          (item) => item.feature === "Job Match"
+        ).length}
+      </p>
+
+      <p>
+        <strong>Mock interviews:</strong>{" "}
+        {myProgress.filter(
+          (item) => item.feature === "Mock Interview"
+        ).length}
+      </p>
+
+      <p>
+        <strong>Roadmap activities:</strong>{" "}
+        {myProgress.filter(
+          (item) => item.feature === "Learning Roadmap"
+        ).length}
+      </p>
+
+      <h3>Recent activity</h3>
+
+      {myProgress.length === 0 ? (
+        <p>No progress recorded yet.</p>
+      ) : (
+        myProgress.map((item) => (
+          <div key={item.id} className="progress-activity">
+            <strong>{item.feature}</strong>
+            <p>{item.activity_type.replaceAll("_", " ")}</p>
+            <small>
+              {item.created_at
+                ? new Date(item.created_at).toLocaleString()
+                : ""}
+            </small>
+          </div>
+        ))
+      )}
+    </>
+  )}
+</div>
+
+    <div className="profile-details-card">
+      <h2>Skills Tracker</h2>
+      <p>Review your resume skills and identify skills to improve.</p>
+      <button
+        type="button"
+        className="primary-btn"
+        onClick={() => {
+          setShowProfile(false);
+          setActivePage("Resume Analyzer");
+        }}
+      >
+        View Resume Skills
+      </button>
+    </div>
+
+    <button
+      type="button"
+      className="secondary-btn"
+      onClick={handleLogout}
+    >
+      Logout
+    </button>
+  </section>
+) : (
+  renderPage()
+)}
 
       </main>
 
@@ -1597,22 +3045,6 @@ function getScoreLabel(score) {
 // SCORE BREAKDOWN TOTAL
 // ============================================================
 
-function calculateBreakdownTotal(breakdown) {
-  if (!breakdown) {
-    return 0;
-  }
-
-  return (
-    Number(breakdown.keywords || 0) +
-    Number(breakdown.skills || 0) +
-    Number(breakdown.experience || 0) +
-    Number(breakdown.formatting || 0) +
-    Number(breakdown.education || 0) +
-    Number(breakdown.job_relevance || 0)
-  );
-}
-
-
 // ============================================================
 // NAV ITEM
 // ============================================================
@@ -1628,6 +3060,10 @@ function NavItem({
       className={`nav-item ${
         active ? "active" : ""
       }`}
+      type="button"
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      title={label}
       onClick={onClick}
     >
       <span className="nav-icon">

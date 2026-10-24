@@ -9,3 +9,7 @@ node_modules/
 .pytest_cache/
 backend/uploads/*
 backend/temp_resume.pdf
+**/.env
+**/venv/
+**/.venv/
+**/__pycache__/

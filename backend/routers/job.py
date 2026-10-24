@@ -1,359 +1,215 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-import resume_store
 
-from services.groq_service import extract_job_skills
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field, field_validator
+
+from .. import resume_store
+from ..services.groq_config import is_groq_configured
+from ..services.groq_service import extract_job_skills
+
 
 router = APIRouter(
     prefix="/job",
-    tags=["Job Matching"]
+    tags=["Job Matching"],
 )
 
 
 class JobDescription(BaseModel):
-    job_description: str
+    job_description: str = Field(
+        min_length=1,
+        max_length=50_000,
+    )
+
+    @field_validator("job_description")
+    @classmethod
+    def validate_job_description(cls, value):
+        if not value.strip():
+            raise ValueError("Job description cannot be empty.")
+        return value.strip()
 
 
-def normalize_skill(skill: str):
-
-    skill = skill.lower().strip()
+def normalize_skill(skill: str) -> str:
+    """Normalize common skill-name variations for comparison."""
+    skill = " ".join(skill.lower().strip().split())
 
     aliases = {
-
         "reactjs": "react",
         "react.js": "react",
         "react js": "react",
-
-        "angularjs": "angularjs",
-        "angular.js": "angularjs",
-        "angular js": "angularjs",
-
-        "javascript": "javascript",
         "java script": "javascript",
-
-        "typescript": "typescript",
         "type script": "typescript",
-
-        "rest api": "rest api",
         "rest apis": "rest api",
         "restful api": "rest api",
         "restful apis": "rest api",
         "restful services": "rest api",
-
         "mysql database": "mysql",
         "postgresql database": "postgresql",
         "mongodb database": "mongodb",
-
-        "github": "github",
         "git hub": "github",
-
-        "github copilot": "github copilot",
-
-        "claude code": "claude code",
-
         "generative artificial intelligence": "generative ai",
-        "generative ai": "generative ai",
-
         "retrieval augmented generation": "rag",
         "retrieval-augmented generation": "rag",
-
         "test driven development": "tdd",
         "test-driven development": "tdd",
-
         "object oriented programming": "oop",
         "object-oriented programming": "oop",
-
         "software development lifecycle": "sdlc",
         "software development life cycle": "sdlc",
-
-        "unit tests": "unit testing",
         "unit test": "unit testing",
-
-        "automated test scripts": "automated testing",
-        "automated testing": "automated testing",
-
-        "machine learning": "machine learning",
-
-        "natural language processing": "nlp",
-        "nlp": "nlp",
-
-        "artificial intelligence": "ai",
-        "ai": "ai",
-
-        "data analysis": "data analysis",
+        "unit tests": "unit testing",
         "data analytics": "data analysis",
-
         "ms excel": "excel",
         "microsoft excel": "excel",
-
         "ms word": "word",
         "microsoft word": "word",
-
         "ms powerpoint": "powerpoint",
         "microsoft powerpoint": "powerpoint",
-
-        "power bi": "power bi",
         "powerbi": "power bi",
-
-        "google sheets": "google sheets",
-
-        "google workspace": "google workspace",
-
-        "digital marketing": "digital marketing",
-
-        "social media marketing": "social media marketing",
-
         "search engine optimization": "seo",
         "search engine optimisation": "seo",
-        "seo": "seo",
-
-        "content writing": "content writing",
-
-        "content marketing": "content marketing",
-
         "customer relationship management": "crm",
-        "crm": "crm",
-
-        "customer service": "customer service",
-
-        "customer support": "customer support",
-
         "human resources": "hr",
         "human resource": "hr",
-        "hr": "hr",
-
-        "talent acquisition": "recruitment",
-        "recruitment": "recruitment",
-
-        "employee relations": "employee relations",
-
-        "payroll processing": "payroll",
-        "payroll": "payroll",
-
-        "accounting": "accounting",
-
-        "financial reporting": "financial reporting",
-
-        "financial analysis": "financial analysis",
-
-        "gst": "gst",
-
-        "goods and services tax": "gst",
-
-        "tally erp": "tally",
-        "tally prime": "tally",
-        "tally": "tally",
-
-        "autocad": "autocad",
-
+        "communication skills": "communication",
+        "verbal communication": "communication",
+        "written communication": "communication",
+        "negotiation skills": "negotiation",
+        "graphic designing": "graphic design",
+        "user interface design": "ui design",
+        "adobe photoshop": "photoshop",
         "auto cad": "autocad",
-
-        "solidworks": "solidworks",
-
         "solid works": "solidworks",
-
         "computer aided design": "cad",
         "computer-aided design": "cad",
-        "cad": "cad",
-
-        "quality control": "quality control",
-
-        "quality assurance": "quality assurance",
-
-        "project management": "project management",
-
-        "teaching": "teaching",
-
-        "lesson planning": "lesson planning",
-
-        "classroom management": "classroom management",
-
-        "communication skills": "communication",
-
-        "verbal communication": "communication",
-
-        "written communication": "communication",
-
-        "data entry": "data entry",
-
-        "data processing": "data processing",
-
-        "data management": "data management",
-
-        "documentation": "documentation",
-
-        "record management": "record management",
-
-        "inventory management": "inventory management",
-
-        "supply chain management": "supply chain management",
-
-        "inventory control": "inventory control",
-
-        "sales": "sales",
-
-        "lead generation": "lead generation",
-
-        "negotiation skills": "negotiation",
-
-        "negotiation": "negotiation",
-
-        "medical coding": "medical coding",
-
-        "clinical research": "clinical research",
-
-        "patient care": "patient care",
-
-        "graphic designing": "graphic design",
-        "graphic design": "graphic design",
-
-        "ui design": "ui design",
-
-        "user interface design": "ui design",
-
-        "video editing": "video editing",
-
-        "adobe photoshop": "photoshop",
-        "photoshop": "photoshop",
-
-        "hotel operations": "hotel operations",
-
-        "front office": "front office",
-
-        "hospitality": "hospitality"
-
+        "goods and services tax": "gst",
+        "tally erp": "tally",
+        "tally prime": "tally",
+        "talent acquisition": "recruitment",
+        "payroll processing": "payroll",
+        "automated test scripts": "automated testing",
+        "natural language processing": "nlp",
     }
 
-    return aliases.get(
-        skill,
-        skill
-    )
+    return aliases.get(skill, skill)
+
+
+def unique_skills(skills):
+    """Remove duplicates after normalizing skill names."""
+    result = []
+    seen = set()
+
+    for skill in skills or []:
+        if not isinstance(skill, str) or not skill.strip():
+            continue
+
+        display_name = skill.strip()
+        normalized = normalize_skill(display_name)
+
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            result.append(display_name)
+
+    return result
 
 
 @router.post("/match")
 def match_job(job: JobDescription):
-
     if not resume_store.resume_data:
-
         raise HTTPException(
             status_code=400,
-            detail="Please upload or paste your resume first"
+            detail="Please upload or paste your resume first.",
         )
 
-    resume_skills = resume_store.resume_data.get(
-        "skills",
-        []
+    resume_skills = unique_skills(
+        resume_store.resume_data.get("skills", [])
     )
 
     if not resume_skills:
+        if not is_groq_configured():
+            raise HTTPException(
+                status_code=503,
+                detail="Configure GROQ_API_KEY in the backend environment.",
+            )
 
         raise HTTPException(
-            status_code=400,
-            detail="No resume skills found. Please upload or paste your resume again"
+            status_code=422,
+            detail="No supported skills were detected in the current resume.",
         )
 
-    job_skills = extract_job_skills(
-        job.job_description
-    )
+    try:
+        extracted_job_skills = extract_job_skills(
+            job.job_description
+        )
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="Job-skill extraction failed. Check backend logs and retry.",
+        ) from error
+
+    job_skills = unique_skills(extracted_job_skills)
 
     if not job_skills:
-
         raise HTTPException(
-            status_code=400,
-            detail="Could not extract skills from the job description"
+            status_code=422,
+            detail="Could not extract skills from the job description.",
         )
 
-    normalized_resume_skills = {}
-
-    for skill in resume_skills:
-
-        normalized = normalize_skill(skill)
-
-        normalized_resume_skills[normalized] = skill
+    resume_skill_map = {
+        normalize_skill(skill): skill
+        for skill in resume_skills
+    }
 
     matched_skills = []
     missing_skills = []
 
-    for job_skill in job_skills:
+    for skill in job_skills:
+        normalized = normalize_skill(skill)
 
-        normalized_job_skill = normalize_skill(
-            job_skill
-        )
-
-        if normalized_job_skill in normalized_resume_skills:
-
+        if normalized in resume_skill_map:
             matched_skills.append(
-                normalized_resume_skills[
-                    normalized_job_skill
-                ]
+                resume_skill_map[normalized]
             )
-
         else:
+            missing_skills.append(skill)
 
-            missing_skills.append(
-                job_skill
-            )
+    total_job_skills = len(job_skills)
+    matched_count = len(matched_skills)
 
-    matched_skills = list(
-        dict.fromkeys(
-            matched_skills
-        )
+    match_percentage = round(
+        matched_count / total_job_skills * 100,
+        2,
     )
-
-    missing_skills = list(
-        dict.fromkeys(
-            missing_skills
-        )
-    )
-
-    job_skills = list(
-        dict.fromkeys(
-            job_skills
-        )
-    )
-
-    total_job_skills = len(
-        job_skills
-    )
-
-    matched_count = len(
-        matched_skills
-    )
-
-    if total_job_skills > 0:
-
-        match_percentage = round(
-            (
-                matched_count /
-                total_job_skills
-            ) * 100,
-            2
-        )
-
-    else:
-
-        match_percentage = 0
 
     recommendations = []
 
-    for skill in missing_skills:
-
+    if missing_skills:
         recommendations.append(
-            f"Consider learning {skill} to improve your job match."
+            "Prioritize these missing skills: "
+            + ", ".join(missing_skills[:5])
+            + "."
+        )
+        recommendations.append(
+            "Practise missing skills through relevant projects or exercises."
+        )
+        recommendations.append(
+            "Include skills in your resume only when you can support them "
+            "with genuine knowledge or experience."
+        )
+    else:
+        recommendations.append(
+            "All extracted job skills overlap with your detected resume "
+            "skills. Review your projects and experience to ensure they "
+            "provide evidence for the requirements."
         )
 
     return {
-
         "job_skills": job_skills,
-
         "resume_skills": resume_skills,
-
         "matched_skills": matched_skills,
-
         "missing_skills": missing_skills,
-
         "recommendations": recommendations,
-
-        "match_percentage": match_percentage
-
+        "match_percentage": match_percentage,
+        "matched_count": matched_count,
+        "total_job_skills": total_job_skills,
+        "missing_count": len(missing_skills),
+        "score_type": "job_skill_overlap",
     }

@@ -1,220 +1,148 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
-from pypdf import PdfReader
-import fitz
-import resume_store
+import logging
 
-from services.skill_extractor import extract_skills
-from services.ats_service import analyze_resume
-
-router = APIRouter(
-    prefix="/resume",
-    tags=["Resume"]
-)
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+from .. import resume_store
+from ..services.ats_service import analyze_resume
+from ..services.resume_parser import extract_pdf_content, sanitize_filename
+from ..services.skill_extractor import extract_skills
 
 
-class ResumePasteRequest(BaseModel):
-    resume_text: str
+router = APIRouter(prefix="/resume", tags=["Resume"])
+MAX_PDF_BYTES = 10 * 1024 * 1024
+MAX_RESUME_CHARACTERS = 100_000
+logger = logging.getLogger(__name__)
+
+
+class ResumeTextRequest(BaseModel):
+    resume_text: str = Field(min_length=1, max_length=MAX_RESUME_CHARACTERS)
+
+
+def _resume_response(message):
+    current = resume_store.resume_data
+    return {
+        "filename": current["filename"],
+        "message": message,
+        "text": current["text"],
+        "skills": current["skills"],
+        "format": current["format"],
+    }
+
+
+def _extract_skills_or_502(resume_text):
+    try:
+        return extract_skills(resume_text)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=502,
+            detail="Groq skill extraction failed. Check the backend logs and retry.",
+        ) from error
 
 
 @router.post("/upload")
 async def upload_resume(file: UploadFile = File(...)):
+    filename = sanitize_filename(file.filename)
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Only PDF files are allowed.")
 
-    if not file.filename.lower().endswith(".pdf"):
-
+    file_content = await file.read(MAX_PDF_BYTES + 1)
+    await file.close()
+    if len(file_content) > MAX_PDF_BYTES:
         raise HTTPException(
-            status_code=400,
-            detail="Only PDF files are allowed"
+            status_code=413,
+            detail="The PDF exceeds the 10 MB upload limit.",
         )
 
     try:
+        document = extract_pdf_content(file_content)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
-        file_content = await file.read()
-
-        with open("temp_resume.pdf", "wb") as resume_file:
-
-            resume_file.write(file_content)
-
-        reader = PdfReader("temp_resume.pdf")
-
-        resume_text = ""
-
-        for page in reader.pages:
-
-            text = page.extract_text()
-
-            if text:
-
-                resume_text += text + "\n"
-
-        if not resume_text.strip():
-
-            raise HTTPException(
-                status_code=400,
-                detail="Could not extract text from resume"
-            )
-
-        skills = extract_skills(resume_text)
-
-        pdf_document = fitz.open("temp_resume.pdf")
-
-        page_count = len(pdf_document)
-
-        pages_with_text = 0
-        text_blocks = 0
-        images = 0
-
-        for page in pdf_document:
-
-            page_text = page.get_text("text")
-
-            if page_text.strip():
-
-                pages_with_text += 1
-
-            text_blocks += len(
-                page.get_text("blocks")
-            )
-
-            images += len(
-                page.get_images(full=True)
-            )
-
-        pdf_document.close()
-
-        format_data = {
-            "page_count": page_count,
-            "pages_with_text": pages_with_text,
-            "text_blocks": text_blocks,
-            "images": images,
-            "text_extractable": True,
-            "source": "pdf"
-        }
-
-        resume_store.resume_data = {
-            "filename": file.filename,
-            "text": resume_text,
-            "skills": skills,
-            "format": format_data
-        }
-
-        return {
-            "filename": file.filename,
-            "message": "Resume uploaded and processed successfully",
-            "skills": skills,
-            "format": format_data
-        }
-
-    except HTTPException:
-
-        raise
-
-    except Exception as error:
-
-        print(
-            f"Resume upload error: {error}"
-        )
-
+    resume_text = document["text"]
+    if len(resume_text) > MAX_RESUME_CHARACTERS:
         raise HTTPException(
-            status_code=500,
-            detail="Failed to process resume"
+            status_code=413,
+            detail="Extracted resume text exceeds the 100,000-character limit.",
         )
+
+    resume_store.resume_data = {
+        "filename": filename,
+        "text": resume_text,
+        "skills": _extract_skills_or_502(resume_text),
+        "format": {
+            "page_count": document["page_count"],
+            "pages_with_text": document["pages_with_text"],
+            "source": "pdf",
+            "text_extractable": True,
+        },
+    }
+    return _resume_response("Resume uploaded and processed.")
 
 
 @router.post("/paste")
-def paste_resume(request: ResumePasteRequest):
-
+def paste_resume(request: ResumeTextRequest):
     resume_text = request.resume_text.strip()
-
     if not resume_text:
+        raise HTTPException(status_code=422, detail="Resume text cannot be empty.")
 
-        raise HTTPException(
-            status_code=400,
-            detail="Resume text cannot be empty"
-        )
-
-    try:
-
-        skills = extract_skills(resume_text)
-
-        format_data = {
+    resume_store.resume_data = {
+        "filename": "Pasted Resume",
+        "text": resume_text,
+        "skills": _extract_skills_or_502(resume_text),
+        "format": {
             "page_count": 0,
             "pages_with_text": 0,
-            "text_blocks": 0,
-            "images": 0,
+            "source": "pasted_text",
             "text_extractable": True,
-            "source": "pasted_text"
-        }
+        },
+    }
+    return _resume_response("Resume text processed.")
 
-        resume_store.resume_data = {
-            "filename": "Pasted Resume",
-            "text": resume_text,
-            "skills": skills,
-            "format": format_data
-        }
 
-        return {
-            "filename": "Pasted Resume",
-            "message": "Resume pasted and processed successfully",
-            "skills": skills,
-            "format": format_data
-        }
-
-    except Exception as error:
-
-        print(
-            f"Resume paste error: {error}"
-        )
-
+@router.put("/review")
+def review_resume(request: ResumeTextRequest):
+    if not resume_store.resume_data:
         raise HTTPException(
-            status_code=500,
-            detail="Failed to process pasted resume"
+            status_code=404,
+            detail="Upload or paste a resume before reviewing its text.",
         )
+
+    resume_text = request.resume_text.strip()
+    if not resume_text:
+        raise HTTPException(status_code=422, detail="Resume text cannot be empty.")
+
+    skills = _extract_skills_or_502(resume_text)
+    resume_store.resume_data["text"] = resume_text
+    resume_store.resume_data["skills"] = skills
+    return _resume_response("Reviewed resume text saved.")
 
 
 @router.post("/analyze")
 def analyze_uploaded_resume():
-
     if not resume_store.resume_data:
-
         raise HTTPException(
             status_code=400,
-            detail="Please upload or paste your resume first"
+            detail="Please upload or paste your resume first.",
         )
 
-    resume_text = resume_store.resume_data.get(
-        "text",
-        ""
-    )
-
-    resume_skills = resume_store.resume_data.get(
-        "skills",
-        []
-    )
-
-    format_data = resume_store.resume_data.get(
-        "format",
-        {}
-    )
-
-    if not resume_text:
-
+    current = resume_store.resume_data
+    try:
+        analysis = analyze_resume(
+            current["text"],
+            current["skills"],
+            current["format"],
+        )
+    except Exception:
+        logger.exception("Resume analysis failed.")
         raise HTTPException(
-            status_code=400,
-            detail="Please upload or paste your resume first"
+            status_code=502,
+            detail="Resume analysis failed. Check the backend logs and AI configuration.",
         )
-
-    analysis = analyze_resume(
-        resume_text,
-        resume_skills,
-        format_data
-    )
 
     if not analysis:
-
         raise HTTPException(
-            status_code=500,
-            detail="Could not analyze the resume"
+            status_code=422,
+            detail="Resume analysis could not be produced from the supplied text.",
         )
 
     return analysis
