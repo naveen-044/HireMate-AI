@@ -5,22 +5,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 def _error_category(error: Exception) -> str:
     original = getattr(error, "orig", None)
-    if isinstance(original, FileNotFoundError):
-        return "ca_certificate_unavailable"
-
-    error_args = getattr(original, "args", ())
-    code = error_args[0] if error_args and isinstance(error_args[0], int) else None
-
-    if code == 1045:
+    sqlstate = getattr(original, "sqlstate", None) or getattr(
+        original, "pgcode", None
+    )
+    if sqlstate and sqlstate.startswith("28"):
         return "authentication_rejected"
-    if code in (1044, 1049):
-        return "database_or_privilege_rejected"
-    if code in (1042, 2003, 2005):
+    if sqlstate and sqlstate.startswith("3D"):
+        return "database_not_found"
+    if sqlstate and sqlstate.startswith("08"):
         return "network_or_dns_failure"
-    if code in (2026, 3159):
-        return "tls_or_certificate_failure"
-    if isinstance(error, FileNotFoundError):
-        return "ca_certificate_unavailable"
     if isinstance(error, (RuntimeError, ValueError)):
         return "configuration_error"
     if isinstance(error, ImportError):

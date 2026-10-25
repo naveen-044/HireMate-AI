@@ -13,7 +13,10 @@ HireMate AI is a React/Vite frontend backed by a FastAPI service. The currently 
    python -m pip install -r backend\requirements.txt
    ```
 
-3. Copy `backend\.env.example` to `backend\.env`. Add a Groq key to enable AI-assisted analysis. `GROQ_MODEL` can select another model available to the Groq API.
+3. Copy `backend\.env.example` to `backend\.env`. Set `DATABASE_URL` to your
+   Neon PostgreSQL connection string with SSL enabled, and add a Groq key to
+   enable AI-assisted analysis. `GROQ_MODEL` can select another model available
+   to the Groq API.
 4. Start the API from the repository root:
 
    ```powershell
