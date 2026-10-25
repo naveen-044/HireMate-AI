@@ -26,6 +26,7 @@ allowed_origins = [
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
     "http://127.0.0.1:5176",
+    "https://hiremate-ai-mauve.vercel.app",
 ]
 if frontend_origin:
     allowed_origins.append(frontend_origin)
