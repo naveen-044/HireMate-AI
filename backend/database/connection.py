@@ -18,7 +18,9 @@ if not DATABASE_URL:
 database_url = make_url(DATABASE_URL)
 connect_args = {}
 
-if database_url.drivername == "mysql+pymysql":
+if database_url.drivername in {"postgres", "postgresql"}:
+    database_url = database_url.set(drivername="postgresql+psycopg")
+elif database_url.drivername == "mysql+pymysql":
     backend_dir = Path(__file__).resolve().parents[1]
     ca_pem = os.getenv("MYSQL_SSL_CA_PEM", "").strip()
     configured_ca_path = os.getenv("MYSQL_SSL_CA", "").strip()

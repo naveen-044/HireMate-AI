@@ -46,10 +46,11 @@ repository root, and checks `/api/health`.
 
 Set the blueprint's `sync: false` variables in the Render dashboard:
 `DATABASE_URL`, `GROQ_API_KEY`, `JWT_SECRET_KEY`, `SMTP_EMAIL`,
-`SMTP_APP_PASSWORD`, `FRONTEND_ORIGIN`, and `MYSQL_SSL_CA_PEM`. Set
-`MYSQL_SSL_CA_PEM` to the full CA certificate text from Aiven; do not add the
-certificate or other secrets to the repository. After the initial deploy has
-created the tables, remove `CREATE_DB_TABLES` from the service environment.
+`SMTP_APP_PASSWORD`, and `FRONTEND_ORIGIN`. For Neon, use its PostgreSQL
+connection URL with SSL enabled; the backend configures SQLAlchemy's Psycopg
+driver for standard `postgresql://` URLs. Keep the URL in Render's environment
+settings, not in the repository. After the initial deploy has created the
+tables, remove `CREATE_DB_TABLES` from the service environment.
 
 The blueprint uses Render's free plan, which may sleep while idle. Resume
 storage is in memory, so keep the service to a single instance.
