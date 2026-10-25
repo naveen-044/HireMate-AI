@@ -38,6 +38,22 @@ HireMate AI is a React/Vite frontend backed by a FastAPI service. The currently 
    npm run dev
    ```
 
+## Deploying the backend to Render
+
+Create a Render web service from this repository using the included `render.yaml`.
+The blueprint installs `requirements.txt`, starts `backend.app:app` from the
+repository root, and checks `/api/health`.
+
+Set the blueprint's `sync: false` variables in the Render dashboard:
+`DATABASE_URL`, `GROQ_API_KEY`, `JWT_SECRET_KEY`, `SMTP_EMAIL`,
+`SMTP_APP_PASSWORD`, `FRONTEND_ORIGIN`, and `MYSQL_SSL_CA_PEM`. Set
+`MYSQL_SSL_CA_PEM` to the full CA certificate text from Aiven; do not add the
+certificate or other secrets to the repository. After the initial deploy has
+created the tables, remove `CREATE_DB_TABLES` from the service environment.
+
+The blueprint uses Render's free plan, which may sleep while idle. Resume
+storage is in memory, so keep the service to a single instance.
+
 ## Scoring and resume handling
 
 - Scoring rules are deterministic and versioned (`1.0.0`). The ATS-style readability estimate is shown only for PDF uploads with page metadata. Pasted text does not receive a PDF readability score.

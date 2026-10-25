@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import models
 from .database.connection import Base, engine
 from .routers import auth, career, job, mock_interview, progress as progress_router
 from .routers import resume, roadmap
@@ -11,7 +12,8 @@ from .services.groq_config import get_groq_model, is_groq_configured
 app = FastAPI()
 is_production = os.getenv("APP_ENV", "development").strip().lower() == "production"
 is_vercel_deployment = bool(os.getenv("VERCEL"))
-if not is_production and not is_vercel_deployment:
+create_db_tables = os.getenv("CREATE_DB_TABLES", "").strip().lower() == "true"
+if create_db_tables or (not is_production and not is_vercel_deployment):
     Base.metadata.create_all(bind=engine)
 
 frontend_origin = os.getenv("FRONTEND_ORIGIN", "").strip().rstrip("/")
