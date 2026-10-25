@@ -2,12 +2,12 @@
 import os
 import hashlib
 import secrets
-import smtplib
+import logging
 
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 
 import jwt
+import resend
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -23,6 +23,8 @@ from ..models.user import User
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 password_hash = PasswordHash.recommended()
@@ -31,7 +33,7 @@ bearer_scheme = HTTPBearer()
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "1"))
+OTP_EXPIRE_MINUTES = int(os.getenv("OTP_EXPIRE_MINUTES", "5"))
 MAX_OTP_ATTEMPTS = 1
 PASSWORD_RESET_EXPIRE_MINUTES = 10
 MAX_PASSWORD_RESET_ATTEMPTS = 5
@@ -94,86 +96,73 @@ def hash_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode("utf-8")).hexdigest()
 
 
-def send_otp_email(recipient_email: str, otp: str):
-    smtp_email = os.getenv("SMTP_EMAIL")
-    smtp_password = os.getenv("SMTP_APP_PASSWORD", "").replace(" ", "")
+def send_transactional_email(
+    recipient_email: str,
+    subject: str,
+    text_body: str,
+):
+    """Send an email through Resend's HTTPS API (no SMTP connection required)."""
+    api_key = os.getenv("RESEND_API_KEY")
+    sender = os.getenv("MAIL_FROM")
 
-    if not smtp_email or not smtp_password:
+    if not api_key or not sender:
+        logger.error("Email service configuration is missing (RESEND_API_KEY or MAIL_FROM).")
         raise HTTPException(
             status_code=500,
-            detail="Email settings are missing. Check SMTP_EMAIL and SMTP_APP_PASSWORD in backend/.env."
+            detail="Email service is not configured. Please contact support.",
         )
-
-    message = EmailMessage()
-    message["Subject"] = "Verify your HireMate AI account"
-    message["From"] = smtp_email
-    message["To"] = recipient_email
-
-    message.set_content(
-        f"""Hello,
-
-Your HireMate AI verification code is: {otp}
-
-This code expires in {OTP_EXPIRE_MINUTES} minutes.
-Enter it in HireMate AI to verify your email address.
-
-If you did not request this code, you can ignore this email.
-
-HireMate AI Team
-"""
-    )
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
-            server.starttls()
-            server.login(smtp_email, smtp_password)
-            server.send_message(message)
+        resend.api_key = api_key
+        result = resend.Emails.send({
+            "from": sender,
+            "to": [recipient_email],
+            "subject": subject,
+            "text": text_body,
+        })
+        logger.info("Email provider accepted a message for delivery.")
+        return result
 
-    except (smtplib.SMTPException, OSError):
+    except HTTPException:
+        raise
+    except Exception as error:
+        # Keep provider details in server logs; never return secrets or raw provider
+        # errors to the client. Resend acceptance does not guarantee inbox delivery.
+        logger.exception("Resend email request failed (%s).", type(error).__name__)
         raise HTTPException(
             status_code=502,
-            detail="Could not send the verification email. Check your Gmail settings and try again."
-        )
+            detail="Could not send the email. Please try again later.",
+        ) from error
+
+
+def send_otp_email(recipient_email: str, otp: str):
+    send_transactional_email(
+        recipient_email=recipient_email,
+        subject="Verify your HireMate AI account",
+        text_body=(
+            "Hello,\n\n"
+            f"Your HireMate AI verification code is: {otp}\n\n"
+            f"This code expires in {OTP_EXPIRE_MINUTES} minutes.\n"
+            "Enter it in HireMate AI to verify your email address.\n\n"
+            "If you did not request this code, you can ignore this email.\n\n"
+            "HireMate AI Team"
+        ),
+    )
 
 
 def send_password_reset_email(recipient_email: str, otp: str):
-    smtp_email = os.getenv("SMTP_EMAIL")
-    smtp_password = os.getenv("SMTP_APP_PASSWORD", "").replace(" ", "")
-
-    if not smtp_email or not smtp_password:
-        raise HTTPException(
-            status_code=500,
-            detail="Email settings are missing. Check SMTP_EMAIL and SMTP_APP_PASSWORD in backend/.env."
-        )
-
-    message = EmailMessage()
-    message["Subject"] = "Reset your HireMate AI password"
-    message["From"] = smtp_email
-    message["To"] = recipient_email
-    message.set_content(
-        f"""Hello,
-
-Your HireMate AI password reset code is: {otp}
-
-This code expires in {PASSWORD_RESET_EXPIRE_MINUTES} minutes. You can use it
-to set a new password in HireMate AI.
-
-If you did not request a password reset, you can ignore this email.
-
-HireMate AI Team
-"""
+    send_transactional_email(
+        recipient_email=recipient_email,
+        subject="Reset your HireMate AI password",
+        text_body=(
+            "Hello,\n\n"
+            f"Your HireMate AI password reset code is: {otp}\n\n"
+            f"This code expires in {PASSWORD_RESET_EXPIRE_MINUTES} minutes.\n"
+            "Enter it in HireMate AI to reset your password.\n\n"
+            "If you did not request a password reset, you can ignore this email.\n\n"
+            "HireMate AI Team"
+        ),
     )
-
-    try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
-            server.starttls()
-            server.login(smtp_email, smtp_password)
-            server.send_message(message)
-    except (smtplib.SMTPException, OSError) as error:
-        raise HTTPException(
-            status_code=502,
-            detail="Could not send the password reset email. Check your email settings and try again."
-        ) from error
 
 
 # -------------------------
