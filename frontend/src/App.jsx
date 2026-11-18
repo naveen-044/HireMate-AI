@@ -121,6 +121,7 @@ function App() {
 
   const setActivePage = (page) => {
     setActivePageState(page);
+    setShowProfile(false);
     if (typeof window !== "undefined") {
       const hash = ROUTE_TO_HASH[page] || "#dashboard";
       if (window.location.hash !== hash) {
@@ -133,6 +134,7 @@ function App() {
   useEffect(() => {
     const handlePopState = () => {
       const hash = window.location.hash.toLowerCase();
+      setShowProfile(false);
       const targetPage = PAGE_ROUTES[hash] || "Dashboard";
       setActivePageState(targetPage);
     };
@@ -3734,7 +3736,13 @@ return (
         <header className="topbar">
 
           <div className="topbar-left">
-            <div className="topbar-brand">
+            <div
+              className="topbar-brand"
+              onClick={() => setActivePage("Dashboard")}
+              role="button"
+              tabIndex={0}
+              title="HireMate AI"
+            >
               <img src={hiremateIcon} alt="HireMate" className="topbar-brand-logo" />
               <span className="topbar-brand-title">HireMate</span>
             </div>
@@ -3742,7 +3750,7 @@ return (
             <span className="topbar-sep">/</span>
 
             <span className="breadcrumb-current">
-              {activePage}
+              {showProfile ? "My Profile" : activePage}
             </span>
           </div>
 
@@ -3810,148 +3818,282 @@ return (
         </header>
 
         {showProfile ? (
-  <section className="profile-page">
-    <button
-      type="button"
-      className="secondary-btn"
-      onClick={() => setShowProfile(false)}
-    >
-      ← Back to Dashboard
-    </button>
+          <section className="profile-page">
+            <div className="profile-top-bar">
+              <button
+                type="button"
+                className="secondary-btn profile-back-btn"
+                onClick={() => setShowProfile(false)}
+              >
+                <i className="fa-solid fa-arrow-left" aria-hidden="true"></i>
+                <span>Back to Dashboard</span>
+              </button>
+            </div>
 
-    <h1>My Profile</h1>
-    <p>Manage your account and track your career progress.</p>
+            <div className="profile-hero-card">
+              <div className="profile-hero-avatar" aria-hidden="true">
+                {(authUser.full_name || authUser.email || "U")
+                  .charAt(0)
+                  .toUpperCase()}
+              </div>
+              <div className="profile-hero-content">
+                <h1>{authUser.full_name || "My Profile"}</h1>
+                <p>{authUser.email}</p>
+                <span className="profile-role-badge">
+                  <i className="fa-solid fa-circle-check" aria-hidden="true"></i>
+                  {authUser.is_admin ? "Administrator" : "Candidate Account"}
+                </span>
+              </div>
+            </div>
 
-    <div className="profile-details-card">
-      <h2>Personal Information</h2>
-      <p><strong>Name:</strong> {authUser.full_name || "Not provided"}</p>
-      <p><strong>Email:</strong> {authUser.email || "Not provided"}</p>
-      <p><strong>Phone:</strong> {authUser.phone || "Not provided"}</p>
-      <button
-        type="button"
-        className="secondary-btn"
-        onClick={() => {
-          setChangePasswordForm({
-            currentPassword: "",
-            newPassword: "",
-            confirmNewPassword: "",
-          });
-          setShowCurrentPassword(false);
-          setShowChangeNewPassword(false);
-          setShowChangeConfirmPassword(false);
-          setChangePasswordCaptcha({ challengeId: "", answer: "" });
-          setChangePasswordCaptchaError("");
-          setChangePasswordError("");
-          setShowProfile(false);
-          setActivePage("Change Password");
-        }}
-      >
-        Change Password
-      </button>
-    </div>
+            <div className="profile-grid">
+              {/* Left Column: Personal Info & Quick Actions */}
+              <div className="profile-col">
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <span className="profile-card-icon">
+                      <i className="fa-solid fa-user" aria-hidden="true"></i>
+                    </span>
+                    <h2>Personal Information</h2>
+                  </div>
 
-    {authUser.is_admin && (
-      <div className="profile-details-card">
-        <h2>Administrator tools</h2>
-        <p>Review pending password-reset requests after verifying identity.</p>
-        <button
-          type="button"
-          className="primary-btn"
-          onClick={openAdminPasswordResetRequests}
-        >
-          Password Reset Requests
-        </button>
-      </div>
-    )}
+                  <div className="profile-info-list">
+                    <div className="profile-info-item">
+                      <span className="profile-info-label">
+                        <i className="fa-regular fa-id-badge" aria-hidden="true"></i> Full Name
+                      </span>
+                      <strong className="profile-info-val">
+                        {authUser.full_name || "Not provided"}
+                      </strong>
+                    </div>
 
-    <div className="profile-details-card">
-  <h2>My Career Progress</h2>
+                    <div className="profile-info-item">
+                      <span className="profile-info-label">
+                        <i className="fa-regular fa-envelope" aria-hidden="true"></i> Email Address
+                      </span>
+                      <strong className="profile-info-val">
+                        {authUser.email || "Not provided"}
+                      </strong>
+                    </div>
 
-  {progressLoading && <p>Loading your progress...</p>}
+                    <div className="profile-info-item">
+                      <span className="profile-info-label">
+                        <i className="fa-solid fa-phone" aria-hidden="true"></i> Phone Number
+                      </span>
+                      <strong className="profile-info-val">
+                        {authUser.phone || "Not provided"}
+                      </strong>
+                    </div>
+                  </div>
 
-  {progressError && (
-    <p className="auth-message">{progressError}</p>
-  )}
+                  <div className="profile-card-actions">
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => {
+                        setChangePasswordForm({
+                          currentPassword: "",
+                          newPassword: "",
+                          confirmNewPassword: "",
+                        });
+                        setShowCurrentPassword(false);
+                        setShowChangeNewPassword(false);
+                        setShowChangeConfirmPassword(false);
+                        setChangePasswordCaptcha({ challengeId: "", answer: "" });
+                        setChangePasswordCaptchaError("");
+                        setChangePasswordError("");
+                        setShowProfile(false);
+                        setActivePage("Change Password");
+                      }}
+                    >
+                      <i className="fa-solid fa-key" aria-hidden="true"></i>
+                      <span>Change Password</span>
+                    </button>
+                  </div>
+                </div>
 
-  {!progressLoading && !progressError && (
-    <>
-      <p>
-        <strong>Total activities:</strong> {myProgress.length}
-      </p>
+                {authUser.is_admin && (
+                  <div className="profile-card">
+                    <div className="profile-card-header">
+                      <span className="profile-card-icon">
+                        <i className="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                      </span>
+                      <h2>Administrator Tools</h2>
+                    </div>
+                    <p className="profile-card-desc">
+                      Review and manage pending password-reset requests.
+                    </p>
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={openAdminPasswordResetRequests}
+                    >
+                      <i className="fa-solid fa-users-gear" aria-hidden="true"></i>
+                      <span>Password Reset Requests</span>
+                    </button>
+                  </div>
+                )}
 
-      <p>
-        <strong>Resume analyses:</strong>{" "}
-        {myProgress.filter(
-          (item) => item.feature === "Resume Analyzer"
-        ).length}
-      </p>
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <span className="profile-card-icon">
+                      <i className="fa-solid fa-bullseye" aria-hidden="true"></i>
+                    </span>
+                    <h2>Skills & Quick Navigation</h2>
+                  </div>
+                  <p className="profile-card-desc">
+                    Review your resume analysis skills and identify areas to improve.
+                  </p>
+                  <div className="profile-card-actions">
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={() => {
+                        setShowProfile(false);
+                        setActivePage("Resume Analyzer");
+                      }}
+                    >
+                      <i className="fa-solid fa-file-lines" aria-hidden="true"></i>
+                      <span>View Resume Skills</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-btn logout-btn-profile"
+                      onClick={handleLogout}
+                    >
+                      <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                      <span>Log Out</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-      <p>
-        <strong>Job matches:</strong>{" "}
-        {myProgress.filter(
-          (item) => item.feature === "Job Match"
-        ).length}
-      </p>
+              {/* Right Column: Career Progress */}
+              <div className="profile-col">
+                <div className="profile-card">
+                  <div className="profile-card-header">
+                    <span className="profile-card-icon">
+                      <i className="fa-solid fa-chart-line" aria-hidden="true"></i>
+                    </span>
+                    <h2>My Career Progress</h2>
+                  </div>
 
-      <p>
-        <strong>Mock interviews:</strong>{" "}
-        {myProgress.filter(
-          (item) => item.feature === "Mock Interview"
-        ).length}
-      </p>
+                  {progressLoading && (
+                    <div className="profile-loading">
+                      <i className="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                      <p>Loading your career progress...</p>
+                    </div>
+                  )}
 
-      <p>
-        <strong>Roadmap activities:</strong>{" "}
-        {myProgress.filter(
-          (item) => item.feature === "Learning Roadmap"
-        ).length}
-      </p>
+                  {progressError && (
+                    <p className="auth-message">{progressError}</p>
+                  )}
 
-      <h3>Recent activity</h3>
+                  {!progressLoading && !progressError && (
+                    <>
+                      <div className="profile-stats-grid">
+                        <div className="profile-stat-box">
+                          <span className="profile-stat-icon purple">
+                            <i className="fa-solid fa-bolt" aria-hidden="true"></i>
+                          </span>
+                          <div className="profile-stat-info">
+                            <strong>{myProgress.length}</strong>
+                            <span>Total Activities</span>
+                          </div>
+                        </div>
 
-      {myProgress.length === 0 ? (
-        <p>No progress recorded yet.</p>
-      ) : (
-        myProgress.map((item) => (
-          <div key={item.id} className="progress-activity">
-            <strong>{item.feature}</strong>
-            <p>{item.activity_type.replaceAll("_", " ")}</p>
-            <small>
-              {item.created_at
-                ? new Date(item.created_at).toLocaleString()
-                : ""}
-            </small>
-          </div>
-        ))
-      )}
-    </>
-  )}
-</div>
+                        <div className="profile-stat-box">
+                          <span className="profile-stat-icon blue">
+                            <i className="fa-solid fa-file-lines" aria-hidden="true"></i>
+                          </span>
+                          <div className="profile-stat-info">
+                            <strong>
+                              {myProgress.filter((item) => item.feature === "Resume Analyzer").length}
+                            </strong>
+                            <span>Resume Analyses</span>
+                          </div>
+                        </div>
 
-    <div className="profile-details-card">
-      <h2>Skills Tracker</h2>
-      <p>Review your resume skills and identify skills to improve.</p>
-      <button
-        type="button"
-        className="primary-btn"
-        onClick={() => {
-          setShowProfile(false);
-          setActivePage("Resume Analyzer");
-        }}
-      >
-        View Resume Skills
-      </button>
-    </div>
+                        <div className="profile-stat-box">
+                          <span className="profile-stat-icon green">
+                            <i className="fa-solid fa-bullseye" aria-hidden="true"></i>
+                          </span>
+                          <div className="profile-stat-info">
+                            <strong>
+                              {myProgress.filter((item) => item.feature === "Job Match").length}
+                            </strong>
+                            <span>Job Matches</span>
+                          </div>
+                        </div>
 
-    <button
-      type="button"
-      className="secondary-btn"
-      onClick={handleLogout}
-    >
-      Logout
-    </button>
-  </section>
-) : (
+                        <div className="profile-stat-box">
+                          <span className="profile-stat-icon orange">
+                            <i className="fa-solid fa-microphone" aria-hidden="true"></i>
+                          </span>
+                          <div className="profile-stat-info">
+                            <strong>
+                              {myProgress.filter((item) => item.feature === "Mock Interview").length}
+                            </strong>
+                            <span>Mock Interviews</span>
+                          </div>
+                        </div>
+
+                        <div className="profile-stat-box">
+                          <span className="profile-stat-icon indigo">
+                            <i className="fa-solid fa-graduation-cap" aria-hidden="true"></i>
+                          </span>
+                          <div className="profile-stat-info">
+                            <strong>
+                              {myProgress.filter((item) => item.feature === "Learning Roadmap").length}
+                            </strong>
+                            <span>Roadmaps</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="profile-recent-section">
+                        <h3 className="profile-subheading">
+                          <i className="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+                          Recent Activity
+                        </h3>
+
+                        {myProgress.length === 0 ? (
+                          <div className="profile-empty-activity">
+                            <p>No career activities recorded yet.</p>
+                          </div>
+                        ) : (
+                          <div className="profile-activity-list">
+                            {myProgress.map((item) => (
+                              <div key={item.id} className="progress-activity-item">
+                                <span className="activity-item-icon">
+                                  <i className="fa-solid fa-circle-check" aria-hidden="true"></i>
+                                </span>
+                                <div className="activity-item-content">
+                                  <strong>{item.feature}</strong>
+                                  <p>{item.activity_type.replaceAll("_", " ")}</p>
+                                </div>
+                                <small className="activity-item-time">
+                                  {item.created_at
+                                    ? new Date(item.created_at).toLocaleDateString(undefined, {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : ""}
+                                </small>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
   renderPage()
 )}
 
