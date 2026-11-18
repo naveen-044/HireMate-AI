@@ -1,3 +1,4 @@
+import hiremateIcon from "./assets/hiremate-icon.png";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -3078,7 +3079,7 @@ const renderAuthPage = () => {
     {(authMode === "login" || authMode === "register") && (
       <aside className="auth-brand-panel" aria-label="About HireMate AI">
         <div className="auth-brand">
-          <img src="/hiremate-icon.png" alt="HireMate" className="auth-brand-logo-img" aria-hidden="true" />
+          <img src={hiremateIcon} alt="HireMate" className="auth-brand-logo-img" aria-hidden="true" />
           <span>HireMate <strong>AI</strong></span>
         </div>
 
@@ -3647,7 +3648,7 @@ return (
         <div className="brand">
 
           <div className="brand-logo">
-            <img src="/hiremate-icon.png" alt="HireMate Logo" className="brand-icon-img" />
+            <img src={hiremateIcon} alt="HireMate Logo" className="brand-icon-img" />
           </div>
 
           <div>
@@ -3673,36 +3674,25 @@ return (
           <NavItem
             icon={<i className="fa-solid fa-house" aria-hidden="true"></i>}
             label="Dashboard"
-            active={
-              activePage === "Dashboard"
-            }
-            onClick={() =>
-              setActivePage("Dashboard")
-            }
+            shortLabel="Home"
+            active={activePage === "Dashboard"}
+            onClick={() => setActivePage("Dashboard")}
           />
 
           <NavItem
             icon={<i className="fa-solid fa-file-lines" aria-hidden="true"></i>}
             label="Resume Analyzer"
-            active={
-              activePage === "Resume Analyzer"
-            }
-            onClick={() =>
-              setActivePage(
-                "Resume Analyzer"
-              )
-            }
+            shortLabel="Resume"
+            active={activePage === "Resume Analyzer"}
+            onClick={() => setActivePage("Resume Analyzer")}
           />
 
           <NavItem
             icon={<i className="fa-solid fa-bullseye" aria-hidden="true"></i>}
             label="Job Match"
-            active={
-              activePage === "Job Match"
-            }
-            onClick={() =>
-              setActivePage("Job Match")
-            }
+            shortLabel="Jobs"
+            active={activePage === "Job Match"}
+            onClick={() => setActivePage("Job Match")}
           />
 
           <p className="nav-label second">
@@ -3712,71 +3702,28 @@ return (
           <NavItem
             icon={<i className="fa-solid fa-robot" aria-hidden="true"></i>}
             label="Career Assistant"
-            active={
-              activePage === "Career Assistant"
-            }
-            onClick={() =>
-              setActivePage(
-                "Career Assistant"
-              )
-            }
+            shortLabel="Career"
+            active={activePage === "Career Assistant"}
+            onClick={() => setActivePage("Career Assistant")}
           />
 
           <NavItem
             icon={<i className="fa-solid fa-microphone" aria-hidden="true"></i>}
             label="Mock Interview"
-            active={
-              activePage === "Mock Interview"
-            }
-            onClick={() =>
-              setActivePage(
-                "Mock Interview"
-              )
-            }
+            shortLabel="Interview"
+            active={activePage === "Mock Interview"}
+            onClick={() => setActivePage("Mock Interview")}
           />
 
           <NavItem
             icon={<i className="fa-solid fa-graduation-cap" aria-hidden="true"></i>}
             label="Learning Roadmap"
-            active={
-              activePage === "Learning Roadmap"
-            }
-            onClick={() =>
-              setActivePage(
-                "Learning Roadmap"
-              )
-            }
+            shortLabel="Roadmap"
+            active={activePage === "Learning Roadmap"}
+            onClick={() => setActivePage("Learning Roadmap")}
           />
 
         </nav>
-
-        <div className="sidebar-bottom">
-
-          <div className="ai-status">
-
-            <span className={`status-dot ${aiStatus}`}></span>
-
-            <div>
-
-              <strong>
-                AI Engine
-              </strong>
-
-              <small>
-                {aiStatus === "configured"
-                  ? "Groq connected"
-                  : aiStatus === "not-configured"
-                    ? "AI setup needed"
-                    : aiStatus === "unavailable"
-                      ? "Backend unavailable"
-                      : "Checking connection..."}
-              </small>
-
-            </div>
-
-          </div>
-
-        </div>
 
       </aside>
 
@@ -3786,27 +3733,20 @@ return (
 
         <header className="topbar">
 
-          <div>
+          <div className="topbar-left">
+            <div className="topbar-brand">
+              <img src={hiremateIcon} alt="HireMate" className="topbar-brand-logo" />
+              <span className="topbar-brand-title">HireMate</span>
+            </div>
 
-            <span className="breadcrumb">
-              HireMate AI
-            </span>
-
-            <span className="breadcrumb-arrow">
-              /
-            </span>
+            <span className="topbar-sep">/</span>
 
             <span className="breadcrumb-current">
               {activePage}
             </span>
-
           </div>
 
           <div className="topbar-right">
-
-            <span className="ai-badge">
-              <><i className="fa-solid fa-wand-magic-sparkles me-1" aria-hidden="true"></i> AI Powered</>
-            </span>
 
             <button
               type="button"
@@ -3855,10 +3795,13 @@ return (
 
               <button
                 type="button"
-                className="secondary-btn"
+                className="secondary-btn logout-btn"
                 onClick={handleLogout}
+                title="Log out"
+                aria-label="Log out"
               >
-                Log out
+                <i className="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                <span className="logout-text">Log out</span>
               </button>
             </div>
 
@@ -4047,6 +3990,7 @@ function getScoreLabel(score) {
 function NavItem({
   icon,
   label,
+  shortLabel,
   active,
   onClick,
 }) {
@@ -4065,8 +4009,9 @@ function NavItem({
         {icon}
       </span>
 
-      <span>
-        {label}
+      <span className="nav-label-text">
+        <span className="nav-full-label">{label}</span>
+        <span className="nav-short-label">{shortLabel || label}</span>
       </span>
     </button>
   );
